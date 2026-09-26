@@ -14,13 +14,21 @@ import { LifecyclePage } from './pages/LifecyclePage';
 import { AtsPage } from './pages/AtsPage';
 import { AiHubPage } from './pages/AiHubPage';
 import { TenantSettingsPage } from './pages/TenantSettingsPage';
+import { MySpacePage } from './pages/MySpacePage';
 
 const AppLayout: React.FC = () => {
-  const { activeRoute } = useTenant();
+  const { activeRoute, canAccessRoute } = useTenant();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const renderActiveRoute = () => {
+    // If user has no access to this module/route, default to Dashboard
+    if (!canAccessRoute(activeRoute)) {
+      return <DashboardPage />;
+    }
+
     switch (activeRoute) {
+      case 'myspace':
+        return <MySpacePage />;
       case 'dashboard':
         return <DashboardPage />;
       case 'core_hr':

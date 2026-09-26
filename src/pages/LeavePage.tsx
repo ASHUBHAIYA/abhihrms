@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { ModuleGuard } from '../components/common/ModuleGuard';
 import { LeaveRequest } from '../types/hrms';
+import { exportToCsv } from '../utils/printUtils';
 import { 
   CalendarOff, 
   Plus, 
@@ -14,7 +15,9 @@ import {
   AlertCircle, 
   Inbox, 
   History, 
-  User 
+  User,
+  FileSpreadsheet,
+  Lock
 } from 'lucide-react';
 
 export const LeavePage: React.FC = () => {
@@ -26,13 +29,32 @@ export const LeavePage: React.FC = () => {
 };
 
 export const LeaveContent: React.FC = () => {
-  const { currentTenant, leaveRequests, submitLeaveRequest, updateLeaveStatus, employees, currentUser } = useTenant();
+  const { currentTenant, leaveRequests, submitLeaveRequest, updateLeaveStatus, employees, currentUser, hasPermission, showToast } = useTenant();
 
   const [activeSubTab, setActiveSubTab] = useState<'inbox' | 'history'>('inbox');
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [rejectModalTarget, setRejectModalTarget] = useState<LeaveRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(employees[0]?.id || 'EMP-1001');
+
+  const canApproveLeaves = hasPermission('approve_leaves');
+
+  const handleExportLeavesCsv = () => {
+    const data = leaveRequests.map(l => ({
+      'Request ID': l.id,
+      'Employee Name': l.employeeName,
+      'Department': l.department,
+      'Leave Type': l.leaveType,
+      'Start Date': l.startDate,
+      'End Date': l.endDate,
+      'Duration (Days)': l.days,
+      'Status': l.status,
+      'Approver': l.approvedBy || 'Pending Manager Decision',
+      'Reason': l.reason
+    }));
+    exportToCsv(data, `Leave_Requests_Log_${currentTenant.slug}.csv`);
+    showToast('Export Complete', 'Leave and absence audit log exported to CSV.', 'success');
+  };
 
   // Currently viewed employee for the balance meters
   const currentViewEmployee = useMemo(() => {
@@ -453,28 +475,35 @@ export const LeaveContent: React.FC = () => {
                       </td>
 
                       <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleApprove(req)}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1 active:scale-95"
-                            title="Approve leave and deduct days from balance"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            Approve
-                          </button>
+                        {canApproveLeaves ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleApprove(req)}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1 active:scale-95 cursor-pointer"
+                              title="Approve leave and deduct days from balance"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Approve
+                            </button>
 
-                          <button
-                            onClick={() => {
-                              setRejectModalTarget(req);
-                              setRejectionReason('');
-                            }}
-                            className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 active:scale-95"
-                            title="Reject leave request"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            Reject
-                          </button>
-                        </div>
+                            <button
+                              onClick={() => {
+                                setRejectModalTarget(req);
+                                setRejectionReason('');
+                              }}
+                              className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
+                              title="Reject leave request"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                            <Clock className="w-3 h-3" />
+                            Manager Action Required
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -486,11 +515,24 @@ export const LeaveContent: React.FC = () => {
       ) : (
         /* View 2: Historical Leave Log */
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h2 className="text-sm font-bold text-slate-900">Historical Leave & Absence Audit Log</h2>
-            <span className="text-xs text-slate-500 font-mono">
-              {pastRequests.length} Decided Requests
-            </span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Historical Leave & Absence Audit Log</h2>
+              <p className="text-xs text-slate-500">Chronological history of approved and rejected leave applications</p>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={handleExportLeavesCsv}
+                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                title="Download CSV of leave audit log"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                Export CSV
+              </button>
+              <span className="text-xs text-slate-500 font-mono">
+                {pastRequests.length} Decided Requests
+              </span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">

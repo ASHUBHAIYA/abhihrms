@@ -16,18 +16,21 @@ import {
   TrendingUp,
   UserCheck,
   Check,
+  User,
   X
 } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
   const { 
     currentTenant, 
+    currentUser,
     employees, 
     attendanceRecords, 
     leaveRequests, 
     payrollRuns, 
     jobRequisitions, 
     isModuleSubscribed, 
+    canAccessRoute,
     navigateTo, 
     updateLeaveStatus 
   } = useTenant();
@@ -45,7 +48,10 @@ export const DashboardPage: React.FC = () => {
     return acc;
   }, {} as Record<string, number>);
 
-  const allModules: TenantModule[] = ['core_hr', 'attendance', 'leave', 'payroll', 'ats', 'ai_hub'];
+  const allModules: TenantModule[] = ['core_hr', 'attendance', 'leave', 'payroll', 'ats', 'ai_hub', 'expenses', 'lifecycle'];
+  // Only show modules accessible to this user
+  const accessibleModules = allModules.filter(m => canAccessRoute(m));
+  const canAccessSettings = canAccessRoute('settings');
 
   return (
     <div className="space-y-6 pb-12 max-w-full">
@@ -74,14 +80,24 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
-            onClick={() => navigateTo('settings')}
-            className="w-full sm:w-auto px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors border border-slate-200 flex items-center justify-center gap-1.5 shadow-2xs"
+            onClick={() => navigateTo('myspace')}
+            className="w-full sm:w-auto px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs"
           >
-            Manage Entitlements
-            <ArrowRight className="w-3.5 h-3.5" />
+            <User className="w-3.5 h-3.5" />
+            My Space (ESS)
           </button>
+
+          {canAccessSettings && (
+            <button
+              onClick={() => navigateTo('settings')}
+              className="w-full sm:w-auto px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors border border-slate-200 flex items-center justify-center gap-1.5 shadow-2xs"
+            >
+              Manage Entitlements
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -212,36 +228,26 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {allModules.map(modId => {
+            {accessibleModules.map(modId => {
               const meta = MODULE_CATALOG[modId];
-              const isSub = isModuleSubscribed(modId);
+              if (!meta) return null;
 
               return (
                 <div
                   key={modId}
                   onClick={() => navigateTo(modId)}
-                  className={`p-3.5 rounded-lg border transition-all cursor-pointer text-left relative ${
-                    isSub
-                      ? 'bg-slate-50/70 border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 shadow-2xs'
-                      : 'bg-slate-50/40 border-dashed border-slate-200 hover:border-amber-400 opacity-90'
-                  }`}
+                  className="p-3.5 rounded-lg border transition-all cursor-pointer text-left relative bg-slate-50/70 border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 shadow-2xs group"
                 >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-md flex items-center justify-center text-xs ${
-                        isSub ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
-                      }`}>
-                        {isSub ? <ShieldCheck className="w-4 h-4 text-emerald-600" /> : <Lock className="w-4 h-4 text-amber-600" />}
+                      <div className="w-7 h-7 rounded-md flex items-center justify-center text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
                       </div>
-                      <span className="text-xs font-bold text-slate-900">{meta.name}</span>
+                      <span className="text-xs font-bold text-slate-900 group-hover:text-blue-600">{meta.name}</span>
                     </div>
 
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
-                      isSub
-                        ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                        : 'text-amber-700 bg-amber-50 border-amber-200'
-                    }`}>
-                      {isSub ? 'ACTIVE' : 'LOCKED'}
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded border text-emerald-700 bg-emerald-50 border-emerald-200">
+                      ACTIVE
                     </span>
                   </div>
 

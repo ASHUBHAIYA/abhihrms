@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { ModuleGuard } from '../components/common/ModuleGuard';
 import { Employee } from '../types/hrms';
+import { exportToCsv } from '../utils/printUtils';
 import { 
   Users, 
   Search, 
@@ -18,7 +19,9 @@ import {
   LayoutGrid,
   List,
   Edit3,
-  Award
+  Award,
+  FileSpreadsheet,
+  Lock
 } from 'lucide-react';
 
 export const CoreHrPage: React.FC = () => {
@@ -30,7 +33,7 @@ export const CoreHrPage: React.FC = () => {
 };
 
 const CoreHrContent: React.FC = () => {
-  const { currentTenant, employees, addEmployee, updateEmployee, deleteEmployee } = useTenant();
+  const { currentTenant, employees, addEmployee, updateEmployee, deleteEmployee, currentUser, hasPermission, showToast } = useTenant();
 
   const [activeTab, setActiveTab] = useState<'directory' | 'org_chart'>('directory');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -42,6 +45,55 @@ const CoreHrContent: React.FC = () => {
   const [isEditStatusModalOpen, setIsEditStatusModalOpen] = useState(false);
   const [statusTargetEmployee, setStatusTargetEmployee] = useState<Employee | null>(null);
   const [newStatusValue, setNewStatusValue] = useState<Employee['status']>('active');
+
+  const canManageEmployees = hasPermission('manage_employees');
+  const canViewSalaries = hasPermission('view_compensation');
+
+  const isExecutiveOrCeo = (emp: Employee): boolean => {
+    const role = (emp.role || '').toLowerCase();
+    const manager = (emp.manager || '').toLowerCase();
+    return (
+      role.includes('ceo') ||
+      role.includes('founder') ||
+      role.includes('president') ||
+      role.includes('chief executive') ||
+      role.includes('cto') ||
+      role.includes('cfo') ||
+      role.includes('vp') ||
+      manager === 'ceo' ||
+      manager === 'executive board' ||
+      manager === 'board of directors'
+    );
+  };
+
+  const getEmployeeEditPermission = (emp: Employee): { canEdit: boolean; reason: string } => {
+    if (!canManageEmployees) {
+      return { canEdit: false, reason: 'Read-only mode: Requires HR Manager or Tenant Admin role.' };
+    }
+    if (isExecutiveOrCeo(emp) && currentUser.role !== 'Tenant Admin') {
+      return { canEdit: false, reason: 'Protected Leadership Record: Modifying CEO / Executive status requires Tenant Super Admin.' };
+    }
+    return { canEdit: true, reason: '' };
+  };
+
+  const handleExportEmployeesCsv = () => {
+    const data = filteredEmployees.map(emp => ({
+      'Employee ID': emp.id,
+      'First Name': emp.firstName,
+      'Last Name': emp.lastName,
+      'Email': emp.email,
+      'Role': emp.role,
+      'Department': emp.department,
+      'Location': emp.location,
+      'Status': emp.status,
+      'Reporting Manager': emp.manager,
+      'Employment Type': emp.employmentType || 'Full-Time',
+      'Annual CTC ($)': canViewSalaries ? emp.salary : 'Confidential (RBAC Restricted)',
+      'Joining Date': emp.joinDate
+    }));
+    exportToCsv(data, `Employee_Directory_${currentTenant.slug}.csv`);
+    showToast('Export Complete', 'Workforce master directory exported to CSV.', 'success');
+  };
 
   // New Employee Form State
   const [newEmpData, setNewEmpData] = useState({
@@ -131,6 +183,13 @@ const CoreHrContent: React.FC = () => {
   const handleStatusChangeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (statusTargetEmployee) {
+      const editPerm = getEmployeeEditPermission(statusTargetEmployee);
+      if (!editPerm.canEdit) {
+        showToast('RBAC Security Restriction', editPerm.reason, 'error');
+        setIsEditStatusModalOpen(false);
+        setStatusTargetEmployee(null);
+        return;
+      }
       updateEmployee(statusTargetEmployee.id, { status: newStatusValue });
       if (selectedEmployee?.id === statusTargetEmployee.id) {
         setSelectedEmployee({ ...selectedEmployee, status: newStatusValue });
@@ -231,13 +290,31 @@ const CoreHrContent: React.FC = () => {
             </button>
           </div>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Employee
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportEmployeesCsv}
+              className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Download workforce directory CSV"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              Export Directory CSV
+            </button>
+
+            {canManageEmployees ? (
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Employee
+              </button>
+            ) : (
+              <span className="px-2.5 py-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-lg text-xs font-medium flex items-center gap-1.5" title="Requires HR Manager or Tenant Admin role">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                Read-Only (ESS)
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -494,29 +571,53 @@ const CoreHrContent: React.FC = () => {
 
                       {/* Footer: Salary & Actions */}
                       <div className="mt-3 pt-2 flex items-center justify-between">
-                        <div className="text-[11px] font-mono text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          ${(emp.salary / 1000).toFixed(0)}k/yr
-                        </div>
+                        {canViewSalaries ? (
+                          <div className="text-[11px] font-mono text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            ${(emp.salary / 1000).toFixed(0)}k/yr
+                          </div>
+                        ) : (
+                          <div className="text-[10px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5 text-slate-400" /> Confidential
+                          </div>
+                        )}
 
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setStatusTargetEmployee(emp);
-                              setNewStatusValue(emp.status);
-                              setIsEditStatusModalOpen(true);
-                            }}
-                            className="px-2 py-1 text-[11px] text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded transition-colors font-medium"
-                            title="Change Status"
-                          >
-                            Status
-                          </button>
+                          {canManageEmployees && (
+                            (() => {
+                              const editPerm = getEmployeeEditPermission(emp);
+                              if (editPerm.canEdit) {
+                                return (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setStatusTargetEmployee(emp);
+                                      setNewStatusValue(emp.status);
+                                      setIsEditStatusModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 text-[11px] text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded transition-colors font-medium cursor-pointer"
+                                    title="Change Employment Status"
+                                  >
+                                    Status
+                                  </button>
+                                );
+                              } else {
+                                return (
+                                  <span 
+                                    className="px-2 py-0.5 text-[10px] text-amber-700 bg-amber-50 rounded flex items-center gap-1 border border-amber-200 cursor-not-allowed font-medium" 
+                                    title={editPerm.reason}
+                                  >
+                                    <Lock className="w-2.5 h-2.5 text-amber-600" /> Protected
+                                  </span>
+                                );
+                              }
+                            })()
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedEmployee(emp);
                             }}
-                            className="px-2 py-1 text-[11px] text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded font-semibold transition-colors"
+                            className="px-2 py-1 text-[11px] text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded font-semibold transition-colors cursor-pointer"
                           >
                             View Card
                           </button>
@@ -553,6 +654,7 @@ const CoreHrContent: React.FC = () => {
                     ) : (
                       filteredEmployees.map(emp => {
                         const initials = `${emp.firstName[0]}${emp.lastName[0]}`;
+                        const editPerm = getEmployeeEditPermission(emp);
                         return (
                           <tr 
                             key={emp.id}
@@ -592,8 +694,14 @@ const CoreHrContent: React.FC = () => {
                               {getStatusBadge(emp.status)}
                             </td>
 
-                            <td className="py-3 px-4 font-mono text-slate-800 tabular-nums font-semibold">
-                              ${(emp.salary / 1000).toFixed(0)}k / yr
+                            <td className="py-3 px-4 font-mono text-slate-800 tabular-nums">
+                              {canViewSalaries ? (
+                                <span className="font-semibold">${(emp.salary / 1000).toFixed(0)}k / yr</span>
+                              ) : (
+                                <span className="text-slate-400 text-[11px] flex items-center gap-1">
+                                  <Lock className="w-3 h-3 text-slate-400" /> Restricted
+                                </span>
+                              )}
                             </td>
 
                             <td className="py-3 px-4 text-right">
@@ -602,20 +710,28 @@ const CoreHrContent: React.FC = () => {
                                   e.stopPropagation();
                                   setSelectedEmployee(emp);
                                 }}
-                                className="text-blue-600 hover:text-blue-700 font-semibold text-xs mr-3"
+                                className="text-blue-600 hover:text-blue-700 font-semibold text-xs mr-3 cursor-pointer"
                               >
                                 View
                               </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteEmployee(emp.id);
-                                }}
-                                className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                                title="Archive Employee"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canManageEmployees && (
+                                editPerm.canEdit ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteEmployee(emp.id);
+                                    }}
+                                    className="text-slate-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
+                                    title="Archive Employee"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-300 p-1 cursor-not-allowed inline-block" title={editPerm.reason}>
+                                    <Lock className="w-3.5 h-3.5 inline text-amber-500/70" />
+                                  </span>
+                                )
+                              )}
                             </td>
                           </tr>
                         );
@@ -751,7 +867,13 @@ const CoreHrContent: React.FC = () => {
                 <span className="text-slate-500 text-[11px] flex items-center gap-1 font-medium">
                   <DollarSign className="w-3 h-3 text-emerald-600" /> Annual Base Comp
                 </span>
-                <span className="text-emerald-800 font-mono font-bold block">${selectedEmployee.salary.toLocaleString()} / yr</span>
+                {canViewSalaries ? (
+                  <span className="text-emerald-800 font-mono font-bold block">${selectedEmployee.salary.toLocaleString()} / yr</span>
+                ) : (
+                  <span className="text-slate-500 font-mono text-xs flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-slate-400" /> Confidential (RBAC Restricted)
+                  </span>
+                )}
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
@@ -794,21 +916,42 @@ const CoreHrContent: React.FC = () => {
 
             {/* Quick Profile Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-              <button
-                onClick={() => {
-                  setStatusTargetEmployee(selectedEmployee);
-                  setNewStatusValue(selectedEmployee.status);
-                  setIsEditStatusModalOpen(true);
-                }}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                Change Status
-              </button>
+              {canManageEmployees ? (
+                (() => {
+                  const editPerm = getEmployeeEditPermission(selectedEmployee);
+                  if (editPerm.canEdit) {
+                    return (
+                      <button
+                        onClick={() => {
+                          setStatusTargetEmployee(selectedEmployee);
+                          setNewStatusValue(selectedEmployee.status);
+                          setIsEditStatusModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        Change Status
+                      </button>
+                    );
+                  } else {
+                    return (
+                      <span className="px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 text-xs font-medium rounded-lg flex items-center gap-1.5" title={editPerm.reason}>
+                        <Lock className="w-3.5 h-3.5 text-amber-600" />
+                        Protected Executive Record
+                      </span>
+                    );
+                  }
+                })()
+              ) : (
+                <span className="px-3 py-1.5 bg-slate-100 text-slate-500 text-xs font-medium rounded-lg flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  Read-Only Employee Record
+                </span>
+              )}
 
               <button
                 onClick={() => setSelectedEmployee(null)}
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-2xs"
+                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-2xs cursor-pointer"
               >
                 Done
               </button>

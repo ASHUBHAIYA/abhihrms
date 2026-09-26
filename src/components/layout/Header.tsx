@@ -29,7 +29,8 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
     navigateTo, 
     logAttendanceClockIn, 
     resetAllData,
-    employees
+    employees,
+    canAccessRoute
   } = useTenant();
 
   const [hasClockedInToday, setHasClockedInToday] = useState(false);
@@ -39,6 +40,8 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
 
   const tenantMenuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const canAccessSettings = canAccessRoute('settings');
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -55,11 +58,14 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
   }, []);
 
   const routeNames: Record<string, string> = {
+    myspace: 'My Personal Workspace (ESS)',
     dashboard: 'Executive Dashboard',
     core_hr: 'Core HR & Employee Master',
     attendance: 'Daily Attendance & Shifts',
     leave: 'Leave Management Engine',
     payroll: 'Payroll & Compensation',
+    expenses: 'Expenses & Reimbursements',
+    lifecycle: 'Assets & Lifecycle',
     ats: 'AI Recruiter / ATS',
     ai_hub: 'AI Policy Hub',
     settings: 'Tenant & Plan Settings'
@@ -72,7 +78,13 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
     setHasClockedInToday(true);
   };
 
-  const rolesList: UserRole[] = ['Tenant Admin', 'HR Manager', 'Employee'];
+  const rolesList: { role: UserRole; label: string; desc: string; badge: string }[] = [
+    { role: 'Tenant Admin', label: 'Tenant Admin', desc: 'Full root org & RBAC control', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
+    { role: 'HR Manager', label: 'HR Manager', desc: 'Employee lifecycle & ATS lead', badge: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    { role: 'Finance Officer', label: 'Finance Officer', desc: 'Payroll & claims disbursement', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    { role: 'Department Lead', label: 'Department Lead', desc: 'Team approvals & shift roster', badge: 'bg-amber-50 text-amber-700 border-amber-200' },
+    { role: 'Employee', label: 'Employee (ESS)', desc: 'Self-service payslip & leaves', badge: 'bg-slate-100 text-slate-700 border-slate-200' }
+  ];
 
   return (
     <header className="sticky top-0 z-30 h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between gap-3 shadow-xs shrink-0">
@@ -169,19 +181,21 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
                 })}
               </div>
 
-              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between px-1">
-                <button
-                  onClick={() => {
-                    setTenantDropdownOpen(false);
-                    navigateTo('settings');
-                  }}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
-                >
-                  <Sliders className="w-3.5 h-3.5" />
-                  Manage Plan & Modules
-                </button>
-                <span className="text-[10px] text-slate-500 font-mono">{tenants.length} Tenants</span>
-              </div>
+              {canAccessSettings && (
+                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between px-1">
+                  <button
+                    onClick={() => {
+                      setTenantDropdownOpen(false);
+                      navigateTo('settings');
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1"
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    Manage Plan & Modules
+                  </button>
+                  <span className="text-[10px] text-slate-500 font-mono">{tenants.length} Tenants</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -235,14 +249,16 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
           )}
         </button>
 
-        {/* Tenant Entitlement Settings Shortcut */}
-        <button
-          onClick={() => navigateTo('settings')}
-          className="p-2 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 border border-slate-200 transition-colors"
-          title="Super Admin Module Manager & Entitlements"
-        >
-          <Sliders className="w-4 h-4" />
-        </button>
+        {/* Tenant Entitlement Settings Shortcut (Admin Only) */}
+        {canAccessSettings && (
+          <button
+            onClick={() => navigateTo('settings')}
+            className="p-2 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 border border-slate-200 transition-colors"
+            title="Super Admin Module Manager & Entitlements"
+          >
+            <Sliders className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Reset Demo Data Button */}
         <button
@@ -308,26 +324,38 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1 mb-1">
                   Switch Active Role (RBAC Simulation)
                 </div>
-                {rolesList.map((role) => {
-                  const isActive = currentUser.role === role;
+                {rolesList.map((item) => {
+                  const isActive = currentUser.role === item.role;
                   return (
                     <button
-                      key={role}
+                      key={item.role}
                       onClick={() => {
-                        switchUser(role);
+                        switchUser(item.role);
                         setUserDropdownOpen(false);
                       }}
-                      className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors ${
+                      className={`w-full p-2 rounded-lg flex items-start justify-between text-xs transition-colors text-left ${
                         isActive
                           ? 'bg-blue-50 text-blue-900 font-semibold border border-blue-200'
                           : 'text-slate-700 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <Shield className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-                        <span>{role}</span>
+                      <div className="flex items-start gap-2 min-w-0">
+                        <Shield className={`w-4 h-4 shrink-0 mt-0.5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900">{item.label}</span>
+                            {isActive && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 font-bold">
+                                ACTIVE
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-normal truncate mt-0.5">
+                            {item.desc}
+                          </div>
+                        </div>
                       </div>
-                      {isActive && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                      {isActive && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-1" />}
                     </button>
                   );
                 })}

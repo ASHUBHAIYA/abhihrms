@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { ModuleGuard } from '../components/common/ModuleGuard';
 import { ShiftType, ShiftInfo } from '../types/hrms';
+import { exportToCsv } from '../utils/printUtils';
 import { 
   Clock, 
   MapPin, 
@@ -20,7 +21,8 @@ import {
   CheckCircle,
   XCircle,
   CalendarDays,
-  X
+  X,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const AttendancePage: React.FC = () => {
@@ -82,7 +84,7 @@ const SHIFTS: Record<ShiftType, ShiftInfo> = {
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export const AttendanceContent: React.FC = () => {
-  const { currentTenant, attendanceRecords, logAttendanceClockIn, logAttendanceClockOut, employees, currentUser } = useTenant();
+  const { currentTenant, attendanceRecords, logAttendanceClockIn, logAttendanceClockOut, employees, currentUser, showToast } = useTenant();
 
   const [activeTab, setActiveTab] = useState<'tracker' | 'roster'>('tracker');
   
@@ -99,6 +101,22 @@ export const AttendanceContent: React.FC = () => {
   // Status Filter for Attendance Board
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('All');
   const [searchFilter, setSearchFilter] = useState('');
+
+  const handleExportAttendanceCsv = () => {
+    const data = filteredAttendanceLogs.map(rec => ({
+      'Employee ID': rec.employeeId,
+      'Employee Name': rec.employeeName,
+      'Department': rec.department,
+      'Punch In': rec.clockInTime || rec.clockIn || '—',
+      'Punch Out': rec.clockOutTime || rec.clockOut || '—',
+      'Net Hours': `${rec.totalHoursWorked || 8} hrs`,
+      'Break Duration': `${rec.breakDurationMinutes || 30} mins`,
+      'Geofence Check-in': rec.locationCheckin || 'Verified (Headquarters)',
+      'Status': rec.status
+    }));
+    exportToCsv(data, `Attendance_Timesheet_${currentTenant.slug}.csv`);
+    showToast('Export Complete', 'Attendance and timesheet records exported to CSV.', 'success');
+  };
 
   // Weekly Shift Roster State (scoped per employee)
   const [rosterAssignments, setRosterAssignments] = useState<Record<string, Record<string, ShiftType>>>(() => {
@@ -525,14 +543,25 @@ export const AttendanceContent: React.FC = () => {
                   />
                 </div>
 
-                {selectedStatusFilter !== 'All' && (
+                <div className="flex items-center gap-2">
+                  {selectedStatusFilter !== 'All' && (
+                    <button
+                      onClick={() => setSelectedStatusFilter('All')}
+                      className="text-xs text-blue-600 hover:underline font-semibold"
+                    >
+                      Reset filter ({selectedStatusFilter})
+                    </button>
+                  )}
+
                   <button
-                    onClick={() => setSelectedStatusFilter('All')}
-                    className="text-xs text-blue-600 hover:underline font-semibold"
+                    onClick={handleExportAttendanceCsv}
+                    className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                    title="Export timesheets to CSV"
                   >
-                    Reset filter ({selectedStatusFilter})
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    Export CSV
                   </button>
-                )}
+                </div>
               </div>
             </div>
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { ModuleGuard } from '../components/common/ModuleGuard';
 import { Asset, ExitClearance } from '../types/hrms';
+import { printElement, downloadDocumentAsHtml, exportToCsv } from '../utils/printUtils';
 import { 
   Laptop, 
   Users, 
@@ -26,7 +27,9 @@ import {
   Smartphone, 
   Sparkles,
   ArrowRight,
-  Clock
+  Clock,
+  FileSpreadsheet,
+  Lock
 } from 'lucide-react';
 
 export const LifecyclePage: React.FC = () => {
@@ -49,8 +52,13 @@ const LifecycleContent: React.FC = () => {
     toggleClearanceItem, 
     calculateFandF, 
     settleFandF, 
+    currentUser,
+    hasPermission,
     showToast 
   } = useTenant();
+
+  const canManageAssets = hasPermission('manage_assets');
+  const canManageExitClearance = hasPermission('manage_exit_clearance');
 
   // Sub-tabs: Asset Tracking vs Exit Clearance & F&F
   const [activeTab, setActiveTab] = useState<'assets' | 'exit_clearance'>('assets');
@@ -74,6 +82,43 @@ const LifecycleContent: React.FC = () => {
 
   // F&F Detail Modal State
   const [selectedExitForFandF, setSelectedExitForFandF] = useState<ExitClearance | null>(null);
+
+  // CSV Exporters
+  const handleExportAssetsCsv = () => {
+    const data = filteredAssets.map(a => ({
+      'Asset ID': a.id,
+      'Device Name': a.name,
+      'Category': a.category,
+      'Serial Number': a.serialNumber,
+      'Assigned Employee': a.assignedToName || 'Unassigned',
+      'Department': a.department || 'IT Warehouse',
+      'Condition': a.condition,
+      'Purchase Price ($)': a.purchasePrice,
+      'Status': a.status === 'allocated' ? 'Allocated' : 'In Inventory',
+      'Allocation Date': a.allocatedDate || 'N/A'
+    }));
+    exportToCsv(data, `Hardware_Asset_Inventory_${currentTenant.slug}.csv`);
+    showToast('Export Complete', 'Hardware asset inventory exported to CSV.', 'success');
+  };
+
+  const handleExportExitsCsv = () => {
+    const data = exitClearances.map(e => ({
+      'Exit ID': e.id,
+      'Employee': e.employeeName,
+      'Role': e.role,
+      'Department': e.department,
+      'Last Working Day': e.lastWorkingDay,
+      'Notice Days': e.noticePeriodDays,
+      'IT Clearance': e.itClearance ? 'Cleared' : 'Pending',
+      'Admin Clearance': e.adminClearance ? 'Cleared' : 'Pending',
+      'Finance Clearance': e.financeClearance ? 'Cleared' : 'Pending',
+      'HR Interview': e.hrExitInterview ? 'Completed' : 'Pending',
+      'F&F Settlement Status': e.ffStatus,
+      'Net Settlement ($)': e.netSettlementAmount || 'Pending'
+    }));
+    exportToCsv(data, `Exit_Clearance_Pipeline_${currentTenant.slug}.csv`);
+    showToast('Export Complete', 'Exit clearance records exported to CSV.', 'success');
+  };
 
   // Asset Metrics
   const totalAssetsCount = assets.length;
@@ -154,13 +199,19 @@ const LifecycleContent: React.FC = () => {
 
         <div className="flex items-center gap-2.5">
           {activeTab === 'assets' ? (
-            <button
-              onClick={() => setIsRegisterAssetModalOpen(true)}
-              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Register New Hardware Asset
-            </button>
+            canManageAssets ? (
+              <button
+                onClick={() => setIsRegisterAssetModalOpen(true)}
+                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Register New Hardware Asset
+              </button>
+            ) : (
+              <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-slate-400" /> Read-Only Inventory
+              </span>
+            )
           ) : (
             <div className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200">
               Active Exit Pipeline: {exitClearances.length}
@@ -265,9 +316,20 @@ const LifecycleContent: React.FC = () => {
               </select>
             </div>
 
-            <span className="text-xs font-mono font-semibold text-slate-500">
-              Showing {filteredAssets.length} Assets
-            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExportAssetsCsv}
+                className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                title="Download CSV export of hardware assets"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                Export Assets CSV
+              </button>
+
+              <span className="text-xs font-mono font-semibold text-slate-500">
+                Showing {filteredAssets.length} Assets
+              </span>
+            </div>
           </div>
 
           {/* Asset Inventory Table */}
@@ -352,20 +414,26 @@ const LifecycleContent: React.FC = () => {
 
                         {/* Actions */}
                         <td className="py-3.5 px-4 text-right">
-                          {asset.status === 'allocated' ? (
-                            <button
-                              onClick={() => unassignAsset(asset.id)}
-                              className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-200 transition-colors"
-                            >
-                              Reclaim Asset
-                            </button>
+                          {canManageAssets ? (
+                            asset.status === 'allocated' ? (
+                              <button
+                                onClick={() => unassignAsset(asset.id)}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                              >
+                                Reclaim Asset
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenAssignModal(asset)}
+                                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                              >
+                                Assign Device
+                              </button>
+                            )
                           ) : (
-                            <button
-                              onClick={() => handleOpenAssignModal(asset)}
-                              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors"
-                            >
-                              Assign Device
-                            </button>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {asset.status === 'allocated' ? 'Allocated' : 'In Storage'}
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -397,6 +465,17 @@ const LifecycleContent: React.FC = () => {
               <p className="text-xs text-slate-600">
                 Manage 60/90-day separation timelines, laptop/VPN access revocation, and statutory Full & Final settlements.
               </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportExitsCsv}
+                className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-rose-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                title="Download CSV export of exit clearances"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                Export Exits CSV
+              </button>
             </div>
           </div>
 
@@ -806,7 +885,26 @@ const LifecycleContent: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
+            <div id="printable-ff-statement" className="p-6 space-y-4 text-xs bg-white">
+              {/* Company & Statement Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
+                    {currentTenant.logoInitials}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs">{currentTenant.name}</h4>
+                    <span className="text-[10px] text-slate-500 font-mono">HR Separation & Legal Compliance Division</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-slate-800 uppercase tracking-wider block">
+                    FINAL SETTLEMENT
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">Ref: {selectedExitForFandF.id}</span>
+                </div>
+              </div>
+
               {/* Employee Summary */}
               <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 font-mono text-[11px]">
                 <div>
@@ -857,19 +955,33 @@ const LifecycleContent: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-              <button
-                onClick={() => {
-                  window.print();
-                }}
-                className="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                Print Statement
-              </button>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    printElement('printable-ff-statement', `FF_Settlement_${selectedExitForFandF.employeeName.replace(/\s+/g, '_')}`);
+                  }}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Print Statement
+                </button>
+
+                <button
+                  onClick={() => {
+                    downloadDocumentAsHtml('printable-ff-statement', `FF_Settlement_${selectedExitForFandF.employeeName.replace(/\s+/g, '_')}`);
+                    showToast('Statement Downloaded', `Full & Final settlement statement saved for ${selectedExitForFandF.employeeName}.`, 'success');
+                  }}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download PDF / Doc
+                </button>
+              </div>
+
               <button
                 onClick={() => setSelectedExitForFandF(null)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg cursor-pointer"
               >
                 Close
               </button>

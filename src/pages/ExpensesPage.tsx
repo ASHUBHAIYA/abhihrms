@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { ModuleGuard } from '../components/common/ModuleGuard';
 import { ExpenseClaim } from '../types/hrms';
+import { printElement, exportToCsv } from '../utils/printUtils';
 import { 
   CreditCard, 
   Sparkles, 
@@ -26,7 +27,10 @@ import {
   ArrowUpRight,
   Eye,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  FileSpreadsheet,
+  Printer,
+  Lock
 } from 'lucide-react';
 
 export const ExpensesPage: React.FC = () => {
@@ -87,6 +91,7 @@ const ExpensesContent: React.FC = () => {
     approveExpenseClaim, 
     rejectExpenseClaim, 
     pushExpenseToPayroll, 
+    hasPermission,
     showToast 
   } = useTenant();
 
@@ -111,6 +116,25 @@ const ExpensesContent: React.FC = () => {
 
   // Preview Receipt Modal State
   const [previewClaim, setPreviewClaim] = useState<ExpenseClaim | null>(null);
+
+  const canApproveExpenses = hasPermission('approve_expenses');
+
+  const handleExportExpensesCsv = () => {
+    const data = filteredExpenses.map(c => ({
+      'Claim ID': c.id,
+      'Employee Name': c.employeeName,
+      'Category': c.category,
+      'Merchant': c.merchant,
+      'Amount ($)': c.amount.toFixed(2),
+      'Transaction Date': c.transactionDate,
+      'Submitted Date': c.submittedAt,
+      'Status': c.status,
+      'Approved By': c.approvedBy || 'Pending',
+      'Notes': c.notes
+    }));
+    exportToCsv(data, `Expense_Claims_${currentTenant.slug}.csv`);
+    showToast('Export Complete', 'Expense claims register exported to CSV.', 'success');
+  };
 
   // Metrics Calculations
   const totalClaimsSum = expenses.reduce((acc, c) => acc + c.amount, 0);
@@ -397,6 +421,15 @@ const ExpensesContent: React.FC = () => {
               <option value="rejected">Rejected</option>
             </select>
           </div>
+
+          <button
+            onClick={handleExportExpensesCsv}
+            className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+            title="Download CSV of all expense claims"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            Export Claims CSV
+          </button>
         </div>
       </div>
 
@@ -491,31 +524,44 @@ const ExpensesContent: React.FC = () => {
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
                       {claim.status === 'pending' ? (
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => approveExpenseClaim(claim.id)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors flex items-center gap-1"
-                            title="Approve and push to payroll"
-                          >
-                            <Check className="w-3 h-3" />
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => rejectExpenseClaim(claim.id)}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-200 transition-colors"
-                            title="Reject claim"
-                          >
-                            <X className="w-3 h-3" />
-                            Reject
-                          </button>
-                        </div>
+                        canApproveExpenses ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => approveExpenseClaim(claim.id)}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
+                              title="Approve and push to payroll"
+                            >
+                              <Check className="w-3 h-3" />
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => rejectExpenseClaim(claim.id)}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                              title="Reject claim"
+                            >
+                              <X className="w-3 h-3" />
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                            <Clock className="w-3 h-3" />
+                            Manager Review
+                          </span>
+                        )
                       ) : claim.status === 'approved' && !claim.pushedToPayroll ? (
-                        <button
-                          onClick={() => pushExpenseToPayroll(claim.id)}
-                          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg transition-colors"
-                        >
-                          Queue for Payroll
-                        </button>
+                        canApproveExpenses ? (
+                          <button
+                            onClick={() => pushExpenseToPayroll(claim.id)}
+                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
+                          >
+                            Queue for Payroll
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-emerald-700 font-semibold">
+                            Approved
+                          </span>
+                        )
                       ) : (
                         <span className="text-[11px] text-slate-400 font-mono">
                           {claim.approvedBy ? 'Authorized' : 'Settled'}
@@ -746,15 +792,23 @@ const ExpensesContent: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 space-y-4 text-xs">
+            <div id="printable-receipt" className="p-5 space-y-4 text-xs bg-white">
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 font-mono">
                 <div className="flex items-center justify-between border-b pb-2">
-                  <span className="text-slate-500">Invoice ID:</span>
+                  <span className="text-slate-500">Invoice / Claim ID:</span>
                   <span className="font-bold text-slate-900">{previewClaim.id}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Merchant:</span>
+                  <span className="text-slate-500">Claimant Employee:</span>
+                  <span className="font-bold text-slate-900">{previewClaim.employeeName}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Merchant / Vendor:</span>
                   <span className="font-bold text-slate-800">{previewClaim.merchant}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Category:</span>
+                  <span className="font-semibold text-slate-800">{previewClaim.category}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Transaction Date:</span>
@@ -765,13 +819,13 @@ const ExpensesContent: React.FC = () => {
                   <span className="text-blue-600 underline truncate max-w-[200px]">{previewClaim.receiptName || 'Receipt_Document.pdf'}</span>
                 </div>
                 <div className="flex items-center justify-between pt-2 border-t text-sm font-bold text-slate-900">
-                  <span>Total Amount:</span>
-                  <span className="text-emerald-700">${previewClaim.amount.toFixed(2)}</span>
+                  <span>Reimbursement Amount:</span>
+                  <span className="text-emerald-700 font-mono">${previewClaim.amount.toFixed(2)}</span>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="text-slate-500 font-semibold">Business Notes:</span>
+                <span className="text-slate-500 font-semibold">Business Justification & Notes:</span>
                 <p className="text-slate-800 bg-slate-50 p-2.5 rounded-lg border text-xs">
                   {previewClaim.notes}
                 </p>
@@ -779,14 +833,24 @@ const ExpensesContent: React.FC = () => {
 
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-900 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Verified by Gemini Flash OCR receipt parser · Zero compliance violations detected.</span>
+                <span>Verified by Gemini Flash OCR receipt parser · Compliant with Corporate Travel Policy.</span>
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end">
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <button
+                onClick={() => {
+                  printElement('printable-receipt', `Expense_Receipt_${previewClaim.id}_${previewClaim.merchant.replace(/\s+/g, '_')}`);
+                }}
+                className="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Print Receipt
+              </button>
+
               <button
                 onClick={() => setPreviewClaim(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg cursor-pointer"
               >
                 Close Preview
               </button>

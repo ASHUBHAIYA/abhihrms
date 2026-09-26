@@ -12,10 +12,13 @@ import {
   Candidate,
   UserProfile,
   UserRole,
+  PermissionKey,
+  RolePermissionConfig,
   ExpenseClaim,
   Asset,
   ExitClearance
 } from '../types/hrms';
+import { canUserAccessRoute } from '../utils/accessControl';
 import { 
   INITIAL_TENANTS, 
   INITIAL_EMPLOYEES, 
@@ -26,6 +29,7 @@ import {
   INITIAL_JOBS, 
   INITIAL_CANDIDATES,
   INITIAL_USERS,
+  DEFAULT_ROLE_PERMISSIONS,
   INITIAL_EXPENSES,
   INITIAL_ASSETS,
   INITIAL_EXIT_CLEARANCES,
@@ -54,6 +58,11 @@ interface TenantContextType {
   // Current User & RBAC Auth State
   currentUser: UserProfile;
   users: UserProfile[];
+  rolePermissions: Record<UserRole, RolePermissionConfig>;
+  hasPermission: (permission: PermissionKey) => boolean;
+  canAccessRoute: (routeId: string) => boolean;
+  updateRolePermission: (role: UserRole, permission: PermissionKey, enabled: boolean) => void;
+  resetRolePermissionsToDefault: () => void;
   switchUser: (role: UserRole) => void;
   switchUserRole: (role: UserRole) => void;
   setCurrentUser: (user: UserProfile) => void;
@@ -135,6 +144,7 @@ const LOCAL_STORAGE_KEY_CANDIDATES = 'nexushr_candidates_v3';
 const LOCAL_STORAGE_KEY_EXPENSES = 'nexushr_expenses_v3';
 const LOCAL_STORAGE_KEY_ASSETS = 'nexushr_assets_v3';
 const LOCAL_STORAGE_KEY_EXITS = 'nexushr_exits_v3';
+const LOCAL_STORAGE_KEY_RBAC = 'nexushr_rbac_permissions_v3';
 
 export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Load state from localStorage or initial
@@ -151,6 +161,11 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY_USER);
     return saved ? JSON.parse(saved) : INITIAL_USERS[0];
+  });
+
+  const [rolePermissions, setRolePermissions] = useState<Record<UserRole, RolePermissionConfig>>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY_RBAC);
+    return saved ? JSON.parse(saved) : DEFAULT_ROLE_PERMISSIONS;
   });
 
   const [allEmployees, setAllEmployees] = useState<Employee[]>(() => {
@@ -259,11 +274,66 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.setItem(LOCAL_STORAGE_KEY_EXITS, JSON.stringify(allExits));
   }, [allExits]);
 
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY_RBAC, JSON.stringify(rolePermissions));
+  }, [rolePermissions]);
+
+  // RBAC Permission Checker
+  const hasPermission = (permission: PermissionKey): boolean => {
+    // Tenant Admin has root bypass authority
+    if (currentUser.role === 'Tenant Admin') return true;
+    const config = rolePermissions[currentUser.role];
+    if (!config) return false;
+    return !!config.permissions[permission];
+  };
+
+  const updateRolePermission = (role: UserRole, permission: PermissionKey, enabled: boolean) => {
+    if (!hasPermission('manage_rbac_matrix') && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Access Denied', 'Only Tenant Admins can modify the security permission matrix.', 'error');
+      return;
+    }
+    setRolePermissions(prev => {
+      const currentConfig = prev[role] || DEFAULT_ROLE_PERMISSIONS[role];
+      return {
+        ...prev,
+        [role]: {
+          ...currentConfig,
+          permissions: {
+            ...currentConfig.permissions,
+            [permission]: enabled
+          }
+        }
+      };
+    });
+    showToast('RBAC Policy Updated', `Permission "${permission}" for ${role} set to ${enabled ? 'Enabled' : 'Disabled'}.`, 'info');
+  };
+
+  const resetRolePermissionsToDefault = () => {
+    if (!hasPermission('manage_rbac_matrix') && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Access Denied', 'Only Tenant Admins can reset the security permission matrix.', 'error');
+      return;
+    }
+    setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_RBAC);
+    showToast('RBAC Reset', 'Role permissions restored to corporate security defaults.', 'info');
+  };
+
   // Current active tenant object
   const currentTenant = useMemo(() => {
     const found = tenants.find(t => t.id === currentTenantId);
     return found || tenants[0] || INITIAL_TENANTS[0];
   }, [tenants, currentTenantId]);
+
+  const canAccessRoute = (routeId: string): boolean => {
+    return canUserAccessRoute(routeId, currentTenant, currentUser, hasPermission);
+  };
+
+  // Route Safety: If activeRoute is not accessible under current role or tenant subscription, fallback to dashboard
+  useEffect(() => {
+    if (!canUserAccessRoute(activeRoute, currentTenant, currentUser, hasPermission)) {
+      setActiveRoute('dashboard');
+    }
+  }, [activeRoute, currentTenant, currentUser, rolePermissions]);
 
   // Toast Helpers
   const showToast = (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error' = 'info') => {
@@ -296,6 +366,10 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const toggleModule = (tenantId: string, moduleId: TenantModule) => {
+    if (!hasPermission('configure_modules') && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Access Denied', 'Only Tenant Admins can activate or deactivate feature modules.', 'error');
+      return;
+    }
     setTenants(prev => prev.map(t => {
       if (t.id === tenantId) {
         const hasModule = t.activeModules.includes(moduleId);
@@ -324,6 +398,10 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const activateModuleTrial = (moduleId: TenantModule) => {
+    if (!hasPermission('configure_modules') && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Access Denied', 'Only Tenant Admins can start module trial periods.', 'error');
+      return;
+    }
     setTenants(prev => prev.map(t => {
       if (t.id === currentTenantId) {
         if (!t.activeModules.includes(moduleId)) {
@@ -341,6 +419,10 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const upgradePlan = (tenantId: string, plan: TenantPlan) => {
+    if (!hasPermission('configure_modules') && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Access Denied', 'Only Tenant Admins can change subscription tiers.', 'error');
+      return;
+    }
     setTenants(prev => prev.map(t => {
       if (t.id === tenantId) {
         let maxSeats = 25;
@@ -365,6 +447,10 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const createTenant = (tenantData: Partial<Tenant>): Tenant => {
+    if (!hasPermission('configure_modules') && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Access Denied', 'Only Tenant Admins can provision new organizations.', 'error');
+      return currentTenant;
+    }
     const id = `tenant-${Date.now().toString(36)}`;
     const newTenant: Tenant = {
       id,
@@ -392,6 +478,10 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const updateTenantDetails = (tenantId: string, updates: Partial<Tenant>) => {
+    if (!hasPermission('configure_modules') && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Access Denied', 'Only Tenant Admins can edit organization details.', 'error');
+      return;
+    }
     setTenants(prev => prev.map(t => t.id === tenantId ? { ...t, ...updates } : t));
     showToast('Organization Settings Saved', 'Tenant metadata updated.', 'success');
   };
@@ -418,7 +508,28 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return allEmployees.filter(e => e.tenantId === currentTenant.id);
   }, [allEmployees, currentTenant.id]);
 
+  const isExecutiveOrCeoRecord = (emp: Employee): boolean => {
+    const role = (emp.role || '').toLowerCase();
+    const manager = (emp.manager || '').toLowerCase();
+    return (
+      role.includes('ceo') ||
+      role.includes('founder') ||
+      role.includes('president') ||
+      role.includes('chief executive') ||
+      role.includes('cto') ||
+      role.includes('cfo') ||
+      role.includes('vp') ||
+      manager === 'ceo' ||
+      manager === 'executive board' ||
+      manager === 'board of directors'
+    );
+  };
+
   const addEmployee = (empData: Omit<Employee, 'id' | 'tenantId'>) => {
+    if (!hasPermission('manage_employees')) {
+      showToast('RBAC Access Denied', 'Your current role does not have permission to add employee records.', 'error');
+      return;
+    }
     const newEmp: Employee = {
       ...empData,
       id: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -431,11 +542,29 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const updateEmployee = (id: string, empUpdates: Partial<Employee>) => {
+    if (!hasPermission('manage_employees')) {
+      showToast('RBAC Access Denied', 'Your current role does not have permission to modify employee records or status.', 'error');
+      return;
+    }
+    const target = allEmployees.find(e => e.id === id);
+    if (target && isExecutiveOrCeoRecord(target) && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Security Restriction', 'Protected Record: Only a Tenant Super Admin can modify CEO & Executive leadership records.', 'error');
+      return;
+    }
     setAllEmployees(prev => prev.map(e => e.id === id ? { ...e, ...empUpdates } : e));
     showToast('Profile Updated', 'Employee record saved.', 'info');
   };
 
   const deleteEmployee = (id: string) => {
+    if (!hasPermission('manage_employees')) {
+      showToast('RBAC Access Denied', 'Your current role does not have permission to archive employees.', 'error');
+      return;
+    }
+    const target = allEmployees.find(e => e.id === id);
+    if (target && isExecutiveOrCeoRecord(target) && currentUser.role !== 'Tenant Admin') {
+      showToast('RBAC Security Restriction', 'Protected Record: Only a Tenant Super Admin can archive CEO & Executive leadership records.', 'error');
+      return;
+    }
     setAllEmployees(prev => prev.filter(e => e.id !== id));
     setTenants(prev => prev.map(t => t.id === currentTenant.id ? { ...t, employeeCount: Math.max(1, t.employeeCount - 1) } : t));
     showToast('Employee Removed', 'Employee record archived from directory.', 'info');
@@ -849,6 +978,11 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       resetAllData,
       currentUser,
       users: INITIAL_USERS,
+      rolePermissions,
+      hasPermission,
+      canAccessRoute,
+      updateRolePermission,
+      resetRolePermissionsToDefault,
       switchUser: switchUserRole,
       switchUserRole,
       setCurrentUser,

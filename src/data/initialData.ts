@@ -1,4 +1,4 @@
-import { Tenant, ModuleMetadata, Employee, AttendanceRecord, LeaveRequest, PayrollRun, Payslip, JobRequisition, Candidate, UserProfile, ExpenseClaim, Asset, ExitClearance } from '../types/hrms';
+import { Tenant, ModuleMetadata, Employee, AttendanceRecord, LeaveRequest, PayrollRun, Payslip, JobRequisition, Candidate, UserProfile, ExpenseClaim, Asset, ExitClearance, UserRole, RolePermissionConfig } from '../types/hrms';
 
 export const INITIAL_USERS: UserProfile[] = [
   {
@@ -18,6 +18,22 @@ export const INITIAL_USERS: UserProfile[] = [
     department: 'People Operations'
   },
   {
+    id: 'usr-fin',
+    name: 'Marcus Vance',
+    email: 'marcus.v@company.org',
+    role: 'Finance Officer',
+    avatarInitials: 'MV',
+    department: 'Finance & Treasury'
+  },
+  {
+    id: 'usr-lead',
+    name: 'Elena Rostova',
+    email: 'elena.r@company.org',
+    role: 'Department Lead',
+    avatarInitials: 'ER',
+    department: 'Engineering'
+  },
+  {
     id: 'usr-emp',
     name: 'David Kim',
     email: 'david.k@company.org',
@@ -26,6 +42,109 @@ export const INITIAL_USERS: UserProfile[] = [
     department: 'Engineering'
   }
 ];
+
+export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, RolePermissionConfig> = {
+  'Tenant Admin': {
+    role: 'Tenant Admin',
+    displayName: 'Corporate Super Admin',
+    description: 'Full executive organization authority, master billing, module activation, and RBAC governance.',
+    badgeColor: 'blue',
+    permissions: {
+      manage_employees: true,
+      view_compensation: true,
+      execute_payroll: true,
+      approve_leaves: true,
+      approve_expenses: true,
+      manage_ats: true,
+      manage_assets: true,
+      manage_exit_clearance: true,
+      configure_modules: true,
+      manage_rbac_matrix: true,
+      export_reports: true,
+      use_ai_tools: true
+    }
+  },
+  'HR Manager': {
+    role: 'HR Manager',
+    displayName: 'HR Operations & People Lead',
+    description: 'Oversees employee database, talent recruitment/ATS, leave policy, and separation clearance.',
+    badgeColor: 'indigo',
+    permissions: {
+      manage_employees: true,
+      view_compensation: true,
+      execute_payroll: false,
+      approve_leaves: true,
+      approve_expenses: false,
+      manage_ats: true,
+      manage_assets: true,
+      manage_exit_clearance: true,
+      configure_modules: false,
+      manage_rbac_matrix: false,
+      export_reports: true,
+      use_ai_tools: true
+    }
+  },
+  'Finance Officer': {
+    role: 'Finance Officer',
+    displayName: 'Payroll & Expense Controller',
+    description: 'Authorized to execute compensation disbursement, manage tax brackets, and sign off on expense reimbursements.',
+    badgeColor: 'emerald',
+    permissions: {
+      manage_employees: false,
+      view_compensation: true,
+      execute_payroll: true,
+      approve_leaves: false,
+      approve_expenses: true,
+      manage_ats: false,
+      manage_assets: false,
+      manage_exit_clearance: false,
+      configure_modules: false,
+      manage_rbac_matrix: false,
+      export_reports: true,
+      use_ai_tools: true
+    }
+  },
+  'Department Lead': {
+    role: 'Department Lead',
+    displayName: 'Team Manager & Approver',
+    description: 'Manages team roster, reviews first-level leave requests and project expense submissions.',
+    badgeColor: 'amber',
+    permissions: {
+      manage_employees: false,
+      view_compensation: false,
+      execute_payroll: false,
+      approve_leaves: true,
+      approve_expenses: true,
+      manage_ats: false,
+      manage_assets: false,
+      manage_exit_clearance: false,
+      configure_modules: false,
+      manage_rbac_matrix: false,
+      export_reports: true,
+      use_ai_tools: true
+    }
+  },
+  'Employee': {
+    role: 'Employee',
+    displayName: 'Standard Staff (Self-Service)',
+    description: 'Employee Self-Service (ESS) portal access to view personal payslips, submit leaves/expenses, and consult AI Policy Hub.',
+    badgeColor: 'slate',
+    permissions: {
+      manage_employees: false,
+      view_compensation: false,
+      execute_payroll: false,
+      approve_leaves: false,
+      approve_expenses: false,
+      manage_ats: false,
+      manage_assets: false,
+      manage_exit_clearance: false,
+      configure_modules: false,
+      manage_rbac_matrix: false,
+      export_reports: false,
+      use_ai_tools: true
+    }
+  }
+};
 
 export const MODULE_CATALOG: Record<string, ModuleMetadata> = {
   core_hr: {

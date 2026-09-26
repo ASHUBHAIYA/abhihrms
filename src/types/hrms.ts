@@ -2,7 +2,29 @@ export type TenantModule = 'core_hr' | 'attendance' | 'leave' | 'payroll' | 'ats
 
 export type TenantPlan = 'Starter' | 'Growth' | 'Enterprise' | 'Custom';
 
-export type UserRole = 'Tenant Admin' | 'HR Manager' | 'Employee';
+export type UserRole = 'Tenant Admin' | 'HR Manager' | 'Finance Officer' | 'Department Lead' | 'Employee';
+
+export type PermissionKey = 
+  | 'manage_employees'
+  | 'view_compensation'
+  | 'execute_payroll'
+  | 'approve_leaves'
+  | 'approve_expenses'
+  | 'manage_ats'
+  | 'manage_assets'
+  | 'manage_exit_clearance'
+  | 'configure_modules'
+  | 'manage_rbac_matrix'
+  | 'export_reports'
+  | 'use_ai_tools';
+
+export interface RolePermissionConfig {
+  role: UserRole;
+  displayName: string;
+  description: string;
+  badgeColor: string;
+  permissions: Record<PermissionKey, boolean>;
+}
 
 export interface UserProfile {
   id: string;

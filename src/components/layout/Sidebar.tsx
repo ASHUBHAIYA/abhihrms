@@ -18,6 +18,7 @@ import {
   ShieldCheck, 
   CreditCard, 
   Laptop, 
+  User,
   X 
 } from 'lucide-react';
 
@@ -31,26 +32,40 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
     tenants, 
     currentTenant, 
     switchTenant, 
-    isModuleSubscribed, 
     activeRoute, 
     navigateTo,
-    currentUser
+    currentUser,
+    canAccessRoute
   } = useTenant();
 
   const [tenantDropdownOpen, setTenantDropdownOpen] = useState(false);
+  const [spaceView, setSpaceView] = useState<'myspace' | 'team'>(() => {
+    return activeRoute === 'myspace' ? 'myspace' : 'team';
+  });
 
-  const navItems: { id: string; label: string; icon: any; module?: TenantModule; category: string; adminOnly?: boolean }[] = [
-    { id: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard, category: 'Main' },
+  const teamNavItems: { id: string; label: string; icon: any; module?: TenantModule; category: string; adminOnly?: boolean }[] = [
+    { id: 'dashboard', label: 'Team & Org Overview', icon: LayoutDashboard, category: 'Main' },
     { id: 'core_hr', label: 'Core HR (Employees & Org)', icon: Users, module: 'core_hr', category: 'HR Operations' },
     { id: 'attendance', label: 'Attendance & Shifts', icon: Clock, module: 'attendance', category: 'HR Operations' },
-    { id: 'leave', label: 'Leave Management', icon: CalendarOff, module: 'leave', category: 'HR Operations' },
+    { id: 'leave', label: 'Leave Approvals & Policy', icon: CalendarOff, module: 'leave', category: 'HR Operations' },
     { id: 'payroll', label: 'Payroll Engine', icon: Receipt, module: 'payroll', category: 'Finance & Comp' },
-    { id: 'expenses', label: 'Expenses & Claims', icon: CreditCard, module: 'expenses', category: 'Finance & Comp' },
+    { id: 'expenses', label: 'Expenses & Reimbursement', icon: CreditCard, module: 'expenses', category: 'Finance & Comp' },
     { id: 'lifecycle', label: 'Assets & Lifecycle', icon: Laptop, module: 'lifecycle', category: 'HR Operations' },
     { id: 'ats', label: 'AI Recruiter / ATS', icon: Briefcase, module: 'ats', category: 'Talent Acquisition' },
-    { id: 'ai_hub', label: 'AI Policy Hub', icon: Sparkles, module: 'ai_hub', category: 'Intelligence' },
+    { id: 'ai_hub', label: 'AI Policy & Spec Hub', icon: Sparkles, module: 'ai_hub', category: 'Intelligence' },
     { id: 'settings', label: 'Tenant & Plan Settings', icon: Sliders, category: 'Administration', adminOnly: true },
   ];
+
+  const mySpaceNavItems: { id: string; label: string; icon: any }[] = [
+    { id: 'myspace', label: 'My Personal Workspace', icon: User },
+    { id: 'core_hr', label: 'Company Directory & Org', icon: Building2 },
+    { id: 'leave', label: 'Company Holidays & Absence', icon: CalendarOff },
+    ...(canAccessRoute('ai_hub') ? [{ id: 'ai_hub', label: 'AI Policy Assistant', icon: Sparkles }] : [])
+  ];
+
+  // Strictly filter menus to only those the current user has access to
+  const visibleTeamItems = teamNavItems.filter(item => canAccessRoute(item.id));
+  const canAccessSettings = canAccessRoute('settings');
 
   const handleNavClick = (id: string) => {
     navigateTo(id);
@@ -151,142 +166,225 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                         </div>
                       </div>
                     </div>
-                    {isCurrent && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0 ml-1" />}
+                    {isCurrent && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
                   </button>
                 );
               })}
             </div>
 
-            <div className="mt-1 pt-1 border-t border-slate-100">
-              <button
-                onClick={() => {
-                  setTenantDropdownOpen(false);
-                  navigateTo('settings');
-                }}
-                className="w-full p-1.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 flex items-center justify-center gap-1.5 rounded transition-colors font-medium"
-              >
-                <Plus className="w-3 h-3" />
-                Manage / Add Tenant
-              </button>
-            </div>
+            {canAccessSettings && (
+              <div className="mt-1 pt-1 border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    setTenantDropdownOpen(false);
+                    navigateTo('settings');
+                  }}
+                  className="w-full p-1.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 flex items-center justify-center gap-1.5 rounded transition-colors font-medium"
+                >
+                  <Plus className="w-3 h-3" />
+                  Manage / Add Tenant
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Navigation Section */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-        <div className="space-y-1">
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 mb-1">
-            Workspaces & Modules
-          </div>
+      {/* Dual Workspace View Switcher: My Space vs Team */}
+      <div className="px-3 pt-3 pb-1 shrink-0">
+        <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+          <button
+            onClick={() => {
+              setSpaceView('myspace');
+              navigateTo('myspace');
+            }}
+            className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeRoute === 'myspace' || spaceView === 'myspace'
+                ? 'bg-white text-blue-700 shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>My Space</span>
+          </button>
 
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const isActive = activeRoute === item.id;
-            const isSubscribed = item.module ? isModuleSubscribed(item.module) : true;
-
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all group ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                  <span className="truncate">{item.label}</span>
-                </div>
-
-                {/* Lock Indicator for unsubscribed modules */}
-                {item.module && !isSubscribed && (
-                  <span className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 ml-1 border ${
-                    isActive 
-                      ? 'bg-white/20 text-white border-white/30' 
-                      : 'bg-amber-50 text-amber-700 border-amber-200'
-                  }`}>
-                    <Lock className="w-2.5 h-2.5" />
-                    LOCKED
-                  </span>
-                )}
-
-                {/* AI Sparkle Tag */}
-                {item.id === 'ai_hub' && isSubscribed && (
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0 ml-1 border ${
-                    isActive
-                      ? 'bg-white/20 text-white border-white/30'
-                      : 'bg-blue-50 text-blue-700 border-blue-200'
-                  }`}>
-                    AI
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          <button
+            onClick={() => {
+              setSpaceView('team');
+              if (activeRoute === 'myspace') {
+                navigateTo('dashboard');
+              }
+            }}
+            className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeRoute !== 'myspace' && spaceView === 'team'
+                ? 'bg-white text-blue-700 shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Team & Org</span>
+          </button>
         </div>
       </div>
 
-      {/* Bottom Workspace Metrics */}
-      <div className="p-3 border-t border-slate-200 bg-slate-50/70 space-y-2.5 shrink-0">
-        <div>
-          <div className="flex items-center justify-between text-[11px] mb-1">
-            <span className="text-slate-500 font-medium">Seats Utilized</span>
-            <span className="font-mono text-slate-800 font-bold tabular-nums">
-              {currentTenant.employeeCount} / {currentTenant.maxSeats}
-            </span>
-          </div>
-          <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-            <div 
-              className={`h-full rounded-full transition-all duration-500 ${
-                seatPercentage > 90 ? 'bg-rose-500' : 'bg-blue-600'
-              }`}
-              style={{ width: `${Math.min(100, seatPercentage)}%` }}
-            />
-          </div>
-        </div>
+      {/* Navigation Section */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+        {spaceView === 'myspace' ? (
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 mb-1 flex items-center justify-between">
+              <span>Personal Workplace</span>
+              <span className="text-[9px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">Self-Service</span>
+            </div>
 
-        <div className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between text-xs shadow-xs">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <div className="text-[11px] text-slate-700 font-medium">
-              {currentTenant.activeModules.length}/6 Entitled
+            {mySpaceNavItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activeRoute === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all group ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+
+                  {item.id === 'myspace' && (
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0 ml-1 border ${
+                      isActive ? 'bg-white/20 text-white border-white/30' : 'bg-blue-50 text-blue-700 border-blue-200'
+                    }`}>
+                      ESS
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 mb-1 flex items-center justify-between">
+              <span>Team & Workspaces</span>
+              <span className="text-[9px] font-mono font-normal text-slate-400 lowercase">{currentUser.role}</span>
+            </div>
+
+            {visibleTeamItems.map(item => {
+              const Icon = item.icon;
+              const isActive = activeRoute === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all group ${
+                    isActive
+                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <span className="truncate">{item.label}</span>
+                  </div>
+
+                  {/* AI Sparkle Tag */}
+                  {item.id === 'ai_hub' && (
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0 ml-1 border ${
+                      isActive
+                        ? 'bg-white/20 text-white border-white/30'
+                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                    }`}>
+                      AI
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Workspace Metrics / Identity */}
+      <div className="p-3 border-t border-slate-200 bg-slate-50/70 space-y-2.5 shrink-0">
+        {canAccessSettings ? (
+          <>
+            <div>
+              <div className="flex items-center justify-between text-[11px] mb-1">
+                <span className="text-slate-500 font-medium">Seats Utilized</span>
+                <span className="font-mono text-slate-800 font-bold tabular-nums">
+                  {currentTenant.employeeCount} / {currentTenant.maxSeats}
+                </span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    seatPercentage > 90 ? 'bg-rose-500' : 'bg-blue-600'
+                  }`}
+                  style={{ width: `${Math.min(100, seatPercentage)}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between text-xs shadow-xs">
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="text-[11px] text-slate-700 font-medium">
+                  {currentTenant.activeModules.length} Modules Active
+                </div>
+              </div>
+              <button
+                onClick={() => handleNavClick('settings')}
+                className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold hover:underline"
+              >
+                Configure
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="p-2.5 bg-white rounded-lg border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
+                {currentUser.avatarInitials}
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-900 truncate">
+                  {currentUser.name}
+                </div>
+                <div className="text-[10px] text-slate-500 truncate">
+                  {currentUser.role} · {currentTenant.name}
+                </div>
+              </div>
             </div>
           </div>
-          <button
-            onClick={() => handleNavClick('settings')}
-            className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold hover:underline"
-          >
-            Configure
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
 
   return (
     <>
-      {/* Mobile Slide-Over Drawer with Backdrop */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden flex">
-          {/* Dark Overlay */}
-          <div 
-            onClick={() => setMobileOpen(false)}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-300 animate-in fade-in"
-          />
-
-          {/* Sliding Sheet */}
-          <aside className="relative w-64 max-w-[80vw] h-full shadow-2xl z-10 transition-transform duration-300 ease-out">
-            {sidebarContent}
-          </aside>
-        </div>
-      )}
-
-      {/* Desktop Fixed Static Sidebar */}
-      <aside className="hidden lg:flex w-64 h-full shrink-0 flex-col">
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden lg:block w-64 h-full shrink-0 z-20">
         {sidebarContent}
       </aside>
+
+      {/* Mobile Drawer Backdrop & Sidebar */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          <div 
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity" 
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="relative w-64 max-w-[80vw] h-full shadow-2xl z-10">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
     </>
   );
 };

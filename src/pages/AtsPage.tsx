@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { ModuleGuard } from '../components/common/ModuleGuard';
 import { Candidate, JobRequisition } from '../types/hrms';
+import { exportToCsv } from '../utils/printUtils';
 import { 
   Sparkles, 
   UploadCloud, 
@@ -26,7 +27,8 @@ import {
   Check, 
   Copy,
   Layers,
-  ArrowRight
+  ArrowRight,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const AtsPage: React.FC = () => {
@@ -204,6 +206,24 @@ const AtsContent: React.FC = () => {
     skills: 'React, TypeScript, Cloud Architecture',
     notes: 'Strong candidate profile.'
   });
+
+  const handleExportCandidatesCsv = () => {
+    const data = filteredCandidates.map(c => ({
+      'Candidate ID': c.id,
+      'Name': c.name,
+      'Email': c.email,
+      'Phone': c.phone,
+      'Job Title': c.jobTitle,
+      'Stage': c.stage,
+      'Experience (Years)': c.experienceYears,
+      'Current Employer': c.currentCompany,
+      'AI Match Score (%)': c.matchScore,
+      'Key Skills': c.skills.join(', '),
+      'Applied Date': c.appliedDate
+    }));
+    exportToCsv(data, `Candidate_Pipeline_${currentTenant.slug}_${currentJob.title.replace(/\s+/g, '_')}.csv`);
+    showToast('Export Complete', 'Candidate pipeline exported to CSV.', 'success');
+  };
 
   const stages: { id: Candidate['stage']; label: string }[] = [
     { id: 'sourced', label: 'Sourced' },
@@ -823,8 +843,17 @@ const AtsContent: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <button
+                onClick={handleExportCandidatesCsv}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                title="Download CSV of the candidate pipeline"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                Export Pipeline CSV
+              </button>
+
+              <button
                 onClick={() => setIsAddCandidateModalOpen(true)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add Candidate Manually
