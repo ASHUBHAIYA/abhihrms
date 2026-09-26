@@ -1,0 +1,6 @@
+{
+  "name": "NexusHR - Enterprise Multi-Tenant HRMS",
+  "description": "Enterprise multi-tenant Human Resource Management System with dynamic feature entitlement guarding, module subscriptions, and executive dashboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
