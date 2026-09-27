@@ -17,7 +17,8 @@ import {
   History, 
   User,
   FileSpreadsheet,
-  Lock
+  Lock,
+  Trash2
 } from 'lucide-react';
 
 export const LeavePage: React.FC = () => {
@@ -29,18 +30,95 @@ export const LeavePage: React.FC = () => {
 };
 
 export const LeaveContent: React.FC = () => {
-  const { currentTenant, leaveRequests, submitLeaveRequest, updateLeaveStatus, employees, currentUser, hasPermission, showToast } = useTenant();
+  const { 
+    currentTenant, 
+    leaveRequests, 
+    submitLeaveRequest, 
+    updateLeaveStatus, 
+    employees, 
+    currentUser, 
+    holidays, 
+    addHoliday,
+    deleteHoliday,
+    hasPermission, 
+    showToast 
+  } = useTenant();
 
-  const [activeSubTab, setActiveSubTab] = useState<'inbox' | 'history'>('inbox');
+  const [activeSubTab, setActiveSubTab] = useState<'inbox' | 'history' | 'holidays'>('inbox');
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
+  const [selectedHolidayYear, setSelectedHolidayYear] = useState<string>('All');
   const [rejectModalTarget, setRejectModalTarget] = useState<LeaveRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(employees[0]?.id || 'EMP-1001');
 
+  // Holiday Form State
+  const [newHolidayForm, setNewHolidayForm] = useState({
+    name: '',
+    date: '2026-11-26',
+    type: 'Public / Statutory' as 'Public / Statutory' | 'Company Observance' | 'Floating Holiday',
+    isMandatory: true,
+    description: ''
+  });
+
   const canApproveLeaves = hasPermission('approve_leaves');
+  const isTenantAdminOrHr = currentUser.role === 'Tenant Admin' || currentUser.role === 'HR Manager';
+  const isDeptLead = currentUser.role === 'Department Lead';
+  const isStandardEmployee = currentUser.role === 'Employee';
+
+  const currentLoggedInEmp = useMemo(() => {
+    return employees.find(e => 
+      e.id === currentUser.id ||
+      e.email.toLowerCase() === currentUser.email.toLowerCase() ||
+      `${e.firstName} ${e.lastName}`.toLowerCase() === currentUser.name.toLowerCase()
+    );
+  }, [employees, currentUser]);
+
+  // Currently viewed employee for the balance meters (Standard employees can ONLY see their own balance)
+  const currentViewEmployee = useMemo(() => {
+    if (isStandardEmployee || !canApproveLeaves) {
+      return currentLoggedInEmp || employees[0] || {
+        id: 'EMP-1001',
+        firstName: currentUser.name.split(' ')[0] || 'Employee',
+        lastName: currentUser.name.split(' ')[1] || 'Staff',
+        role: currentUser.role,
+        department: currentUser.department,
+        leaveBalance: { paid: 14, sick: 6, casual: 8, parental: 12 }
+      };
+    }
+    return employees.find(e => e.id === selectedEmployeeId) || currentLoggedInEmp || employees[0] || {
+      id: 'EMP-1001',
+      firstName: 'Sarah',
+      lastName: 'Chen',
+      role: 'VP of Engineering',
+      department: 'Engineering',
+      leaveBalance: { paid: 14, sick: 6, casual: 8, parental: 12 }
+    };
+  }, [employees, selectedEmployeeId, isStandardEmployee, canApproveLeaves, currentLoggedInEmp, currentUser]);
+
+  // Scoped leave requests based on user role (SoD & Privacy Enforcement)
+  const scopedLeaveRequests = useMemo(() => {
+    if (isTenantAdminOrHr) {
+      return leaveRequests;
+    }
+    if (isDeptLead) {
+      return leaveRequests.filter(l => 
+        l.department.toLowerCase() === currentUser.department.toLowerCase() ||
+        l.employeeId === currentLoggedInEmp?.id ||
+        l.employeeId === currentUser.id ||
+        l.employeeName.toLowerCase().trim() === currentUser.name.toLowerCase().trim()
+      );
+    }
+    // Standard Employee: Strictly view only their own requests
+    return leaveRequests.filter(l => 
+      l.employeeId === currentLoggedInEmp?.id ||
+      l.employeeId === currentUser.id ||
+      l.employeeName.toLowerCase().trim() === currentUser.name.toLowerCase().trim()
+    );
+  }, [leaveRequests, isTenantAdminOrHr, isDeptLead, currentUser, currentLoggedInEmp]);
 
   const handleExportLeavesCsv = () => {
-    const data = leaveRequests.map(l => ({
+    const data = scopedLeaveRequests.map(l => ({
       'Request ID': l.id,
       'Employee Name': l.employeeName,
       'Department': l.department,
@@ -53,24 +131,12 @@ export const LeaveContent: React.FC = () => {
       'Reason': l.reason
     }));
     exportToCsv(data, `Leave_Requests_Log_${currentTenant.slug}.csv`);
-    showToast('Export Complete', 'Leave and absence audit log exported to CSV.', 'success');
+    showToast('Export Complete', 'Leave and absence log exported to CSV.', 'success');
   };
-
-  // Currently viewed employee for the balance meters
-  const currentViewEmployee = useMemo(() => {
-    return employees.find(e => e.id === selectedEmployeeId) || employees[0] || {
-      id: 'EMP-1001',
-      firstName: 'Sarah',
-      lastName: 'Chen',
-      role: 'VP of Engineering',
-      department: 'Engineering',
-      leaveBalance: { paid: 14, sick: 6, casual: 8, parental: 12 }
-    };
-  }, [employees, selectedEmployeeId]);
 
   // Form Data for Request
   const [formData, setFormData] = useState({
-    employeeId: employees[0]?.id || 'EMP-1001',
+    employeeId: currentLoggedInEmp?.id || employees[0]?.id || 'EMP-1001',
     leaveType: 'Casual' as LeaveRequest['leaveType'],
     startDate: '2026-10-12',
     endDate: '2026-10-14',
@@ -159,12 +225,46 @@ export const LeaveContent: React.FC = () => {
   };
 
   const pendingRequests = useMemo(() => {
-    return leaveRequests.filter(l => l.status === 'pending');
-  }, [leaveRequests]);
+    return scopedLeaveRequests.filter(l => l.status === 'pending');
+  }, [scopedLeaveRequests]);
 
   const pastRequests = useMemo(() => {
-    return leaveRequests.filter(l => l.status !== 'pending');
-  }, [leaveRequests]);
+    return scopedLeaveRequests.filter(l => l.status !== 'pending');
+  }, [scopedLeaveRequests]);
+
+  const filteredHolidays = useMemo(() => {
+    if (selectedHolidayYear === 'All') return holidays;
+    return holidays.filter(h => h.date.startsWith(selectedHolidayYear));
+  }, [holidays, selectedHolidayYear]);
+
+  const handleHolidaySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newHolidayForm.name.trim()) {
+      showToast('Validation Error', 'Please enter a holiday title.', 'error');
+      return;
+    }
+    const [year, month, day] = newHolidayForm.date.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayOfWeek = daysOfWeek[dateObj.getDay()] || 'Monday';
+
+    addHoliday({
+      name: newHolidayForm.name.trim(),
+      date: newHolidayForm.date,
+      dayOfWeek,
+      type: newHolidayForm.type,
+      isMandatory: newHolidayForm.isMandatory,
+      description: newHolidayForm.description.trim() || undefined
+    });
+    setIsHolidayModalOpen(false);
+    setNewHolidayForm({
+      name: '',
+      date: '2026-11-26',
+      type: 'Public / Statutory',
+      isMandatory: true,
+      description: ''
+    });
+  };
 
   // Balance constants for meters
   const casualMax = 12;
@@ -180,26 +280,31 @@ export const LeaveContent: React.FC = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Leave & Absence Management Engine
-            </h1>
-            <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-mono">
-              Policy & Accruals
-            </span>
-          </div>
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+            Leave Requests & Balances
+          </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Automated balance wallets, manager approval inbox, and leave quota policies for {currentTenant.name}.
+            Manage time-off requests and employee leave balances.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsRequestModalOpen(true)}
-            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+            onClick={handleExportLeavesCsv}
+            className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            Export CSV
+          </button>
+          <button
+            onClick={() => {
+              setFormData(prev => ({ ...prev, employeeId: currentLoggedInEmp?.id || 'EMP-1001' }));
+              setIsRequestModalOpen(true);
+            }}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            Apply for Leave
+            Apply Leave
           </button>
         </div>
       </div>
@@ -208,18 +313,28 @@ export const LeaveContent: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-xs">
         <div className="flex items-center gap-2 text-xs text-slate-700">
           <User className="w-4 h-4 text-blue-600" />
-          <span className="font-medium">Viewing Entitlement Balances for:</span>
-          <select
-            value={selectedEmployeeId}
-            onChange={e => setSelectedEmployeeId(e.target.value)}
-            className="bg-slate-50 border border-slate-200 text-slate-900 font-semibold rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500 shadow-2xs"
-          >
-            {employees.map(emp => (
-              <option key={emp.id} value={emp.id}>
-                {emp.firstName} {emp.lastName} ({emp.role} · {emp.department})
-              </option>
-            ))}
-          </select>
+          {isStandardEmployee || !canApproveLeaves ? (
+            <span className="font-medium text-slate-800">
+              Personal Entitlement for: <strong className="text-blue-700 font-bold">{currentViewEmployee.firstName} {currentViewEmployee.lastName}</strong> ({currentViewEmployee.role} · {currentViewEmployee.department})
+            </span>
+          ) : (
+            <>
+              <span className="font-medium">Viewing Balances for:</span>
+              <select
+                value={selectedEmployeeId}
+                onChange={e => setSelectedEmployeeId(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-slate-900 font-semibold rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500 shadow-2xs"
+              >
+                {employees
+                  .filter(emp => isTenantAdminOrHr || emp.department === currentUser.department || emp.id === currentLoggedInEmp?.id)
+                  .map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.firstName} {emp.lastName} ({emp.role} · {emp.department})
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
 
         <div className="text-[11px] font-mono text-slate-500">
@@ -372,14 +487,14 @@ export const LeaveContent: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveSubTab('inbox')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
               activeSubTab === 'inbox'
                 ? 'bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Inbox className="w-3.5 h-3.5 text-amber-600" />
-            Manager Approval Inbox
+            {isStandardEmployee ? 'My Pending Submissions' : isDeptLead ? 'Department Inbox' : 'Manager Approval Inbox'}
             {pendingRequests.length > 0 && (
               <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-mono font-bold text-[10px] flex items-center justify-center ml-1">
                 {pendingRequests.length}
@@ -389,31 +504,45 @@ export const LeaveContent: React.FC = () => {
 
           <button
             onClick={() => setActiveSubTab('history')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
               activeSubTab === 'history'
                 ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <History className="w-3.5 h-3.5" />
-            Historical Leave Log ({pastRequests.length})
+            {isStandardEmployee ? 'My Leave History' : isDeptLead ? 'Department Leave History' : 'Historical Leave Log'} ({pastRequests.length})
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('holidays')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer ${
+              activeSubTab === 'holidays'
+                ? 'bg-blue-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            Company Holiday Calendar ({holidays.length})
           </button>
         </div>
       </div>
 
-      {/* View 1: Manager Approval Inbox (One-click Approve and Reject) */}
+      {/* View 1: Manager Approval Inbox / My Requests (One-click Approve and Reject for Managers) */}
       {activeSubTab === 'inbox' ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <span>Pending Leave Submissions Requiring Manager Decision</span>
+                <span>{isStandardEmployee ? 'Your Pending Leave Requests' : isDeptLead ? 'Department Pending Submissions' : 'Pending Leave Submissions Requiring Manager Decision'}</span>
                 <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                  {pendingRequests.length} Action Items
+                  {pendingRequests.length} {isStandardEmployee ? 'Pending' : 'Action Items'}
                 </span>
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Review and decide on time-off requests. Approving updates employee leave balance automatically.
+                {isStandardEmployee 
+                  ? 'Track the approval progress of your submitted time-off requests.' 
+                  : 'Review and decide on time-off requests. Approving updates employee leave balance automatically.'}
               </p>
             </div>
           </div>
@@ -423,7 +552,9 @@ export const LeaveContent: React.FC = () => {
               <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
               <div className="text-sm font-bold text-slate-900">All Caught Up!</div>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                No pending leave requests pending manager review for <strong className="text-slate-700">{currentTenant.name}</strong>.
+                {isStandardEmployee 
+                  ? 'You have no pending leave applications awaiting manager sign-off.' 
+                  : `No pending leave requests pending review in your purview for ${currentTenant.name}.`}
               </p>
             </div>
           ) : (
@@ -475,35 +606,58 @@ export const LeaveContent: React.FC = () => {
                       </td>
 
                       <td className="py-3.5 px-4 text-right">
-                        {canApproveLeaves ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleApprove(req)}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1 active:scale-95 cursor-pointer"
-                              title="Approve leave and deduct days from balance"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              Approve
-                            </button>
+                        {(() => {
+                          const isSelf = 
+                            req.employeeId === currentUser.id ||
+                            (currentLoggedInEmp && req.employeeId === currentLoggedInEmp.id) ||
+                            req.employeeName?.toLowerCase().trim() === currentUser.name?.toLowerCase().trim();
 
-                            <button
-                              onClick={() => {
-                                setRejectModalTarget(req);
-                                setRejectionReason('');
-                              }}
-                              className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
-                              title="Reject leave request"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              Reject
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
-                            <Clock className="w-3 h-3" />
-                            Manager Action Required
-                          </span>
-                        )}
+                          if (!canApproveLeaves) {
+                            return (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md font-medium">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                Awaiting Manager Action
+                              </span>
+                            );
+                          }
+
+                          if (isSelf) {
+                            return (
+                              <span 
+                                className="inline-flex items-center gap-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg font-medium"
+                                title="Segregation of Duties: You cannot approve or reject your own leave request. A separate manager or admin must review it."
+                              >
+                                <Lock className="w-3 h-3 text-amber-600" />
+                                Self-Request (Cannot Self-Approve)
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleApprove(req)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1 active:scale-95 cursor-pointer"
+                                title="Approve leave and deduct days from balance"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                Approve
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setRejectModalTarget(req);
+                                  setRejectionReason('');
+                                }}
+                                className="px-3 py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 active:scale-95 cursor-pointer"
+                                title="Reject leave request"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                Reject
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -512,7 +666,7 @@ export const LeaveContent: React.FC = () => {
             </div>
           )}
         </div>
-      ) : (
+      ) : activeSubTab === 'history' ? (
         /* View 2: Historical Leave Log */
         <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -594,6 +748,238 @@ export const LeaveContent: React.FC = () => {
             </table>
           </div>
         </div>
+      ) : (
+        /* View 3: Company Holiday Calendar */
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-blue-700" />
+                <h2 className="text-sm font-bold text-slate-900">
+                  Official Statutory & Company Holiday Schedule
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Corporate observed holidays and federal non-working days for {currentTenant.name}.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Year Selector */}
+              <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                <span className="font-medium">Calendar Year:</span>
+                <select
+                  value={selectedHolidayYear}
+                  onChange={e => setSelectedHolidayYear(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-slate-900 font-semibold rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500 shadow-2xs cursor-pointer"
+                >
+                  <option value="All">All Years ({holidays.length})</option>
+                  <option value="2026">2026 Calendar</option>
+                  <option value="2027">2027 Calendar</option>
+                  <option value="2028">2028 Calendar</option>
+                </select>
+              </div>
+
+              {isTenantAdminOrHr && (
+                <button
+                  onClick={() => setIsHolidayModalOpen(true)}
+                  className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Holiday
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider text-[11px] font-bold">
+                  <th className="py-3 px-4">Date & Day</th>
+                  <th className="py-3 px-4">Holiday Observance</th>
+                  <th className="py-3 px-4">Policy Description</th>
+                  <th className="py-3 px-4">Classification</th>
+                  <th className="py-3 px-4 text-right">Office Status</th>
+                  {isTenantAdminOrHr && <th className="py-3 px-4 text-right">Actions</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredHolidays.length === 0 ? (
+                  <tr>
+                    <td colSpan={isTenantAdminOrHr ? 6 : 5} className="py-12 text-center text-slate-500 text-xs">
+                      No holidays scheduled for {selectedHolidayYear === 'All' ? 'the calendar' : selectedHolidayYear}.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredHolidays.map(hol => {
+                    const [year, month, day] = hol.date.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const monthStr = monthNames[parseInt(month, 10) - 1] || 'Oct';
+
+                    return (
+                      <tr key={hol.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 text-center flex flex-col justify-center shrink-0">
+                              <span className="text-[8px] font-bold text-slate-500 uppercase leading-none">{monthStr}</span>
+                              <span className="text-xs font-bold text-slate-900 font-mono leading-none mt-0.5">{day}</span>
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900">{hol.date}</div>
+                              <div className="text-[11px] text-slate-500">{hol.dayOfWeek}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 font-semibold text-slate-900">
+                          {hol.name}
+                        </td>
+
+                        <td className="py-3 px-4 text-slate-600 text-xs max-w-sm">
+                          {hol.description || 'Statutory paid corporate holiday.'}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                            hol.type === 'Public / Statutory'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-blue-50 text-blue-800 border-blue-200'
+                          }`}>
+                            {hol.type}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4 text-right font-medium text-slate-700">
+                          {hol.isMandatory ? 'Closed (Paid)' : 'Early Closure'}
+                        </td>
+
+                        {isTenantAdminOrHr && (
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => deleteHoliday(hol.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Delete Holiday"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Add Company Holiday Modal (For HR & Admins) */}
+      {isHolidayModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setIsHolidayModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center text-white shrink-0">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                Add Company Holiday
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Publish a statutory holiday or company observance for {currentTenant.name}.
+            </p>
+
+            <form onSubmit={handleHolidaySubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Holiday Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Memorial Day / Diwali Observance"
+                  value={newHolidayForm.name}
+                  onChange={e => setNewHolidayForm({ ...newHolidayForm, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newHolidayForm.date}
+                    onChange={e => setNewHolidayForm({ ...newHolidayForm, date: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Classification *</label>
+                  <select
+                    value={newHolidayForm.type}
+                    onChange={e => setNewHolidayForm({ ...newHolidayForm, type: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs font-medium"
+                  >
+                    <option value="Public / Statutory">Public / Statutory</option>
+                    <option value="Company Observance">Company Observance</option>
+                    <option value="Floating Holiday">Floating Holiday</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Policy Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Federal statutory non-working day. All regional offices closed."
+                  value={newHolidayForm.description}
+                  onChange={e => setNewHolidayForm({ ...newHolidayForm, description: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="mandatoryHoliday"
+                  checked={newHolidayForm.isMandatory}
+                  onChange={e => setNewHolidayForm({ ...newHolidayForm, isMandatory: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                />
+                <label htmlFor="mandatoryHoliday" className="text-xs text-slate-700 font-medium cursor-pointer">
+                  Mandatory Paid Holiday (Offices completely closed)
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsHolidayModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Save Holiday
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Apply for Leave Modal */}
@@ -623,17 +1009,24 @@ export const LeaveContent: React.FC = () => {
               {/* Employee Selector */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Applicant Name *</label>
-                <select
-                  value={formData.employeeId}
-                  onChange={e => setFormData({ ...formData, employeeId: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs font-medium"
-                >
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.firstName} {emp.lastName} ({emp.role} · {emp.department})
-                    </option>
-                  ))}
-                </select>
+                {isStandardEmployee || !isTenantAdminOrHr ? (
+                  <div className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-semibold flex items-center gap-2">
+                    <User className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{currentLoggedInEmp ? `${currentLoggedInEmp.firstName} ${currentLoggedInEmp.lastName} (${currentLoggedInEmp.role} · ${currentLoggedInEmp.department})` : currentUser.name}</span>
+                  </div>
+                ) : (
+                  <select
+                    value={formData.employeeId}
+                    onChange={e => setFormData({ ...formData, employeeId: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs font-medium"
+                  >
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.firstName} {emp.lastName} ({emp.role} · {emp.department})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Leave Type Selector with Live Balance Pills */}

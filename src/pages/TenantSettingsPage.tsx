@@ -18,7 +18,9 @@ import {
   FileText,
   UserCheck,
   Building2,
-  Users
+  Users,
+  Calendar,
+  Trash2
 } from 'lucide-react';
 
 export const TenantSettingsPage: React.FC = () => {
@@ -33,11 +35,55 @@ export const TenantSettingsPage: React.FC = () => {
     rolePermissions,
     updateRolePermission,
     resetRolePermissionsToDefault,
-    switchUserRole
+    switchUserRole,
+    holidays,
+    addHoliday,
+    deleteHoliday,
+    showToast
   } = useTenant();
 
-  const [activeTab, setActiveTab] = useState<'modules' | 'plans' | 'all_tenants' | 'rbac'>('modules');
+  const [activeTab, setActiveTab] = useState<'modules' | 'plans' | 'all_tenants' | 'rbac' | 'holidays'>('modules');
   const [isNewTenantModalOpen, setIsNewTenantModalOpen] = useState(false);
+  const [isNewHolidayModalOpen, setIsNewHolidayModalOpen] = useState(false);
+  const [holidayYearFilter, setHolidayYearFilter] = useState('All');
+
+  // Quick Holiday Form
+  const [holidayForm, setHolidayForm] = useState({
+    name: '',
+    date: '2026-11-26',
+    type: 'Public / Statutory' as 'Public / Statutory' | 'Company Observance' | 'Floating Holiday',
+    isMandatory: true,
+    description: ''
+  });
+
+  const handleSettingsHolidaySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!holidayForm.name.trim()) {
+      showToast('Validation Error', 'Please enter holiday name', 'error');
+      return;
+    }
+    const [year, month, day] = holidayForm.date.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayOfWeek = daysOfWeek[dateObj.getDay()] || 'Monday';
+
+    addHoliday({
+      name: holidayForm.name.trim(),
+      date: holidayForm.date,
+      dayOfWeek,
+      type: holidayForm.type,
+      isMandatory: holidayForm.isMandatory,
+      description: holidayForm.description.trim() || undefined
+    });
+    setIsNewHolidayModalOpen(false);
+    setHolidayForm({
+      name: '',
+      date: '2026-11-26',
+      type: 'Public / Statutory',
+      isMandatory: true,
+      description: ''
+    });
+  };
 
   // New Tenant Form State
   const [newTenantForm, setNewTenantForm] = useState({
@@ -109,16 +155,11 @@ export const TenantSettingsPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Tenant Entitlements & Subscription Switchboard
-            </h1>
-            <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-mono">
-              {currentTenant.name} ({currentTenant.plan})
-            </span>
-          </div>
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+            Settings & Permissions
+          </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Dynamically toggle feature modules, configure plan tiers, and manage multi-tenant workspaces and RBAC policies in real time.
+            Manage plans, modules, and access control for {currentTenant.name}.
           </p>
         </div>
 
@@ -131,7 +172,7 @@ export const TenantSettingsPage: React.FC = () => {
                 activeTab === 'modules' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Module Entitlements
+              Modules
             </button>
             <button
               onClick={() => setActiveTab('plans')}
@@ -139,7 +180,7 @@ export const TenantSettingsPage: React.FC = () => {
                 activeTab === 'plans' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Plan Tiers
+              Plans
             </button>
             <button
               onClick={() => setActiveTab('rbac')}
@@ -148,7 +189,16 @@ export const TenantSettingsPage: React.FC = () => {
               }`}
             >
               <Shield className="w-3.5 h-3.5 text-blue-600" />
-              Corporate RBAC & Security
+              Roles & RBAC
+            </button>
+            <button
+              onClick={() => setActiveTab('holidays')}
+              className={`px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${
+                activeTab === 'holidays' ? 'bg-white text-blue-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              Holidays ({holidays.length})
             </button>
             <button
               onClick={() => setActiveTab('all_tenants')}
@@ -156,7 +206,7 @@ export const TenantSettingsPage: React.FC = () => {
                 activeTab === 'all_tenants' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              All Tenants ({tenants.length})
+              Tenants ({tenants.length})
             </button>
           </div>
 
@@ -561,6 +611,213 @@ export const TenantSettingsPage: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 5: Annual Holiday Calendar Management */}
+      {activeTab === 'holidays' && (
+        <div className="space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs">
+            <div>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-blue-700" />
+                <h2 className="text-sm font-bold text-slate-900">
+                  Annual Corporate Holiday Calendar
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Configure paid non-working statutory holidays and company observances for {currentTenant.name}.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                <span className="font-medium">Year:</span>
+                <select
+                  value={holidayYearFilter}
+                  onChange={e => setHolidayYearFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-slate-900 font-semibold rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500 shadow-2xs"
+                >
+                  <option value="All">All Years ({holidays.length})</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                  <option value="2028">2028</option>
+                </select>
+              </div>
+
+              <button
+                onClick={() => setIsNewHolidayModalOpen(true)}
+                className="px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Holiday
+              </button>
+            </div>
+          </div>
+
+          {/* Holiday Schedule Table */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider text-[11px] font-bold">
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Day</th>
+                    <th className="py-3 px-4">Holiday Name</th>
+                    <th className="py-3 px-4">Policy Description</th>
+                    <th className="py-3 px-4">Classification</th>
+                    <th className="py-3 px-4 text-right">Office Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {holidays
+                    .filter(h => holidayYearFilter === 'All' || h.date.startsWith(holidayYearFilter))
+                    .map(hol => {
+                      return (
+                        <tr key={hol.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-4">
+                            <span className="font-mono font-bold text-slate-900">{hol.date}</span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 font-medium">
+                            {hol.dayOfWeek}
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-slate-900">
+                            {hol.name}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 text-xs max-w-sm">
+                            {hol.description || 'Statutory paid holiday.'}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                              hol.type === 'Public / Statutory'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-blue-50 text-blue-800 border-blue-200'
+                            }`}>
+                              {hol.type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-medium text-slate-700">
+                            {hol.isMandatory ? 'Closed (Paid)' : 'Early Closure'}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => deleteHoliday(hol.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Delete Holiday"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Holiday Modal */}
+      {isNewHolidayModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl relative space-y-4">
+            <button
+              onClick={() => setIsNewHolidayModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center text-white shrink-0">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">Add Company Holiday</h3>
+            </div>
+            <p className="text-xs text-slate-500">Add an observed holiday to the company's annual schedule.</p>
+
+            <form onSubmit={handleSettingsHolidaySubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-700 mb-1 font-semibold">Holiday Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Labor Day / Thanksgiving"
+                  value={holidayForm.name}
+                  onChange={e => setHolidayForm({ ...holidayForm, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 mb-1 font-semibold">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={holidayForm.date}
+                    onChange={e => setHolidayForm({ ...holidayForm, date: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-semibold">Classification</label>
+                  <select
+                    value={holidayForm.type}
+                    onChange={e => setHolidayForm({ ...holidayForm, type: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs font-medium"
+                  >
+                    <option value="Public / Statutory">Public / Statutory</option>
+                    <option value="Company Observance">Company Observance</option>
+                    <option value="Floating Holiday">Floating Holiday</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 mb-1 font-semibold">Policy Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Official non-working paid statutory holiday"
+                  value={holidayForm.description}
+                  onChange={e => setHolidayForm({ ...holidayForm, description: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="settingsMandatory"
+                  checked={holidayForm.isMandatory}
+                  onChange={e => setHolidayForm({ ...holidayForm, isMandatory: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                />
+                <label htmlFor="settingsMandatory" className="text-xs text-slate-700 font-medium cursor-pointer">
+                  Mandatory Paid Holiday (Full office closure)
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsNewHolidayModalOpen(false)}
+                  className="px-3.5 py-1.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg transition-colors shadow-xs cursor-pointer"
+                >
+                  Save Holiday
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

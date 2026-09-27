@@ -383,23 +383,15 @@ Given ${targetEmp?.firstName}'s track record of sustained high velocity and orga
 
   return (
     <div className="space-y-6 pb-12 max-w-full">
-      {/* Top Header & Tenant AI Usage Attribution Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl shadow-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-cyan-600" />
-              AI HR Intelligence Hub
-            </h1>
-            <span className="text-[11px] font-semibold text-cyan-700 bg-cyan-50 px-2.5 py-0.5 rounded-full border border-cyan-200">
-              Module: ai_hub
-            </span>
-            <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-              {currentTenant.name}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500">
-            Strict policy RAG copilot, compliant job specification engines, and 360° employee appraisal drafters.
+      {/* Top Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 bg-white border border-slate-200 rounded-xl shadow-xs">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-cyan-600" />
+            AI HR Tools
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Policy assistant, job description generator, and performance review tools.
           </p>
         </div>
 

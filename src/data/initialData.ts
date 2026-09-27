@@ -1,4 +1,4 @@
-import { Tenant, ModuleMetadata, Employee, AttendanceRecord, LeaveRequest, PayrollRun, Payslip, JobRequisition, Candidate, UserProfile, ExpenseClaim, Asset, ExitClearance, UserRole, RolePermissionConfig } from '../types/hrms';
+import { Tenant, ModuleMetadata, Employee, AttendanceRecord, LeaveRequest, PayrollRun, Payslip, JobRequisition, Candidate, UserProfile, ExpenseClaim, Asset, ExitClearance, UserRole, RolePermissionConfig, CompanyHoliday, TeamCelebration } from '../types/hrms';
 
 export const INITIAL_USERS: UserProfile[] = [
   {
@@ -1289,4 +1289,145 @@ export const INITIAL_EXIT_CLEARANCES: ExitClearance[] = [
     netSettlementAmount: 19600
   }
 ];
+
+export const INITIAL_HOLIDAYS: CompanyHoliday[] = [
+  {
+    id: 'HOL-01',
+    name: "Indigenous Peoples' Day",
+    date: '2026-10-12',
+    dayOfWeek: 'Monday',
+    type: 'Public / Statutory',
+    isMandatory: true,
+    description: 'Federal statutory non-working day. All regional offices closed.'
+  },
+  {
+    id: 'HOL-02',
+    name: 'Veterans Day Observance',
+    date: '2026-11-11',
+    dayOfWeek: 'Wednesday',
+    type: 'Public / Statutory',
+    isMandatory: true,
+    description: 'Honoring military service. Paid company holiday.'
+  },
+  {
+    id: 'HOL-03',
+    name: 'Thanksgiving Day',
+    date: '2026-11-26',
+    dayOfWeek: 'Thursday',
+    type: 'Public / Statutory',
+    isMandatory: true,
+    description: 'National holiday. Corporate offices closed.'
+  },
+  {
+    id: 'HOL-04',
+    name: 'Day After Thanksgiving (Black Friday)',
+    date: '2026-11-27',
+    dayOfWeek: 'Friday',
+    type: 'Company Observance',
+    isMandatory: true,
+    description: 'Company-wide designated bridge holiday.'
+  },
+  {
+    id: 'HOL-05',
+    name: 'Christmas Eve (Half Day)',
+    date: '2026-12-24',
+    dayOfWeek: 'Thursday',
+    type: 'Company Observance',
+    isMandatory: false,
+    description: 'Offices close early at 1:00 PM local time.'
+  },
+  {
+    id: 'HOL-06',
+    name: 'Christmas Day',
+    date: '2026-12-25',
+    dayOfWeek: 'Friday',
+    type: 'Public / Statutory',
+    isMandatory: true,
+    description: 'Global statutory paid holiday.'
+  },
+  {
+    id: 'HOL-07',
+    name: "New Year's Day 2027",
+    date: '2027-01-01',
+    dayOfWeek: 'Friday',
+    type: 'Public / Statutory',
+    isMandatory: true,
+    description: 'First official calendar holiday of 2027.'
+  },
+  {
+    id: 'HOL-08',
+    name: 'Martin Luther King Jr. Day',
+    date: '2027-01-18',
+    dayOfWeek: 'Monday',
+    type: 'Public / Statutory',
+    isMandatory: true,
+    description: 'Federal holiday honoring civil rights leadership.'
+  }
+];
+
+export const INITIAL_CELEBRATIONS: TeamCelebration[] = [
+  {
+    id: 'CEL-01',
+    employeeId: 'EMP-1001',
+    employeeName: 'Sarah Chen',
+    role: 'VP of Engineering',
+    department: 'Engineering',
+    date: '2026-10-04',
+    type: 'birthday',
+    avatarInitials: 'SC'
+  },
+  {
+    id: 'CEL-02',
+    employeeId: 'EMP-1002',
+    employeeName: 'Marcus Vance',
+    role: 'Principal Cloud Architect',
+    department: 'Engineering',
+    date: '2026-10-14',
+    type: 'anniversary',
+    yearsCount: 3,
+    avatarInitials: 'MV'
+  },
+  {
+    id: 'CEL-03',
+    employeeId: 'EMP-1004',
+    employeeName: 'David Kim',
+    role: 'Senior People Operations Manager',
+    department: 'Human Resources',
+    date: '2026-10-22',
+    type: 'birthday',
+    avatarInitials: 'DK'
+  },
+  {
+    id: 'CEL-04',
+    employeeId: 'EMP-1003',
+    employeeName: 'Elena Rostova',
+    role: 'Head of Product Design',
+    department: 'Product & Design',
+    date: '2026-11-05',
+    type: 'birthday',
+    avatarInitials: 'ER'
+  },
+  {
+    id: 'CEL-05',
+    employeeId: 'EMP-1005',
+    employeeName: 'Aaliyah Patel',
+    role: 'Financial Controller',
+    department: 'Finance',
+    date: '2026-11-19',
+    type: 'anniversary',
+    yearsCount: 2,
+    avatarInitials: 'AP'
+  },
+  {
+    id: 'CEL-06',
+    employeeId: 'EMP-5001',
+    employeeName: 'Alexander Wright',
+    role: 'Chief Technology Officer',
+    department: 'Engineering',
+    date: '2026-11-28',
+    type: 'birthday',
+    avatarInitials: 'AW'
+  }
+];
+
 

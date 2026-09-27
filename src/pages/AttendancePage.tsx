@@ -183,8 +183,15 @@ export const AttendanceContent: React.FC = () => {
 
   const handlePunchOut = () => {
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (attendanceRecords[0]) {
-      logAttendanceClockOut(attendanceRecords[0].id);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const activeRec = attendanceRecords.find(r => 
+      r.date === todayStr &&
+      (r.employeeId === currentUser.id || r.employeeName.toLowerCase().includes(currentUser.name.toLowerCase())) &&
+      !(r.clockOut || r.clockOutTime)
+    ) || attendanceRecords.find(r => !(r.clockOut || r.clockOutTime)) || attendanceRecords[0];
+
+    if (activeRec) {
+      logAttendanceClockOut(activeRec.id);
     }
     setClockState('idle');
     setPunchLog(prev => [{ time: nowStr, action: 'Shift Ended & Clocked Out', badge: 'rose' }, ...prev]);

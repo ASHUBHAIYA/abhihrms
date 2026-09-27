@@ -391,23 +391,15 @@ const AtsContent: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12 max-w-full">
-      {/* Top Header & Tenant AI Usage Attribution Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl shadow-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-rose-600" />
-              AI Recruiter & Resume Matcher
-            </h1>
-            <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
-              Module: ats
-            </span>
-            <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-              {currentTenant.name}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500">
-            Intelligent ATS pipeline, semantic candidate screening, and automated next actions powered by Gemini 2.5 Flash.
+      {/* Top Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 sm:p-5 bg-white border border-slate-200 rounded-xl shadow-xs">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-rose-600" />
+            Recruitment & ATS
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Candidate pipeline and job requisitions for {currentTenant.name}.
           </p>
         </div>
 

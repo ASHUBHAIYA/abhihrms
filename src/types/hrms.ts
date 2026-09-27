@@ -296,3 +296,28 @@ export interface ExitClearance {
   deductionsAmount?: number;
   netSettlementAmount?: number;
 }
+
+export interface CompanyHoliday {
+  id: string;
+  tenantId?: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  dayOfWeek: string;
+  type: 'Public / Statutory' | 'Company Observance' | 'Floating Holiday';
+  isMandatory: boolean;
+  description?: string;
+}
+
+export interface TeamCelebration {
+  id: string;
+  tenantId?: string;
+  employeeId: string;
+  employeeName: string;
+  role: string;
+  department: string;
+  date: string; // YYYY-MM-DD
+  type: 'birthday' | 'anniversary';
+  yearsCount?: number;
+  avatarInitials: string;
+}
+

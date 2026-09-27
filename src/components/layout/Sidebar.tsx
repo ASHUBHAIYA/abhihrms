@@ -10,12 +10,9 @@ import {
   Sparkles, 
   LayoutDashboard, 
   Sliders, 
-  Lock, 
   ChevronDown, 
   Building2, 
   Check, 
-  Plus, 
-  ShieldCheck, 
   CreditCard, 
   Laptop, 
   User,
@@ -34,7 +31,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
     switchTenant, 
     activeRoute, 
     navigateTo,
-    currentUser,
     canAccessRoute
   } = useTenant();
 
@@ -43,27 +39,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
     return activeRoute === 'myspace' ? 'myspace' : 'team';
   });
 
-  const teamNavItems: { id: string; label: string; icon: any; module?: TenantModule; category: string; adminOnly?: boolean }[] = [
-    { id: 'dashboard', label: 'Team & Org Overview', icon: LayoutDashboard, category: 'Main' },
-    { id: 'core_hr', label: 'Core HR (Employees & Org)', icon: Users, module: 'core_hr', category: 'HR Operations' },
-    { id: 'attendance', label: 'Attendance & Shifts', icon: Clock, module: 'attendance', category: 'HR Operations' },
-    { id: 'leave', label: 'Leave Approvals & Policy', icon: CalendarOff, module: 'leave', category: 'HR Operations' },
-    { id: 'payroll', label: 'Payroll Engine', icon: Receipt, module: 'payroll', category: 'Finance & Comp' },
-    { id: 'expenses', label: 'Expenses & Reimbursement', icon: CreditCard, module: 'expenses', category: 'Finance & Comp' },
-    { id: 'lifecycle', label: 'Assets & Lifecycle', icon: Laptop, module: 'lifecycle', category: 'HR Operations' },
-    { id: 'ats', label: 'AI Recruiter / ATS', icon: Briefcase, module: 'ats', category: 'Talent Acquisition' },
-    { id: 'ai_hub', label: 'AI Policy & Spec Hub', icon: Sparkles, module: 'ai_hub', category: 'Intelligence' },
-    { id: 'settings', label: 'Tenant & Plan Settings', icon: Sliders, category: 'Administration', adminOnly: true },
+  const teamNavItems: { id: string; label: string; icon: any; module?: TenantModule }[] = [
+    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+    { id: 'core_hr', label: 'Directory', icon: Users, module: 'core_hr' },
+    { id: 'attendance', label: 'Attendance', icon: Clock, module: 'attendance' },
+    { id: 'leave', label: 'Leave', icon: CalendarOff, module: 'leave' },
+    { id: 'payroll', label: 'Payroll', icon: Receipt, module: 'payroll' },
+    { id: 'expenses', label: 'Expenses', icon: CreditCard, module: 'expenses' },
+    { id: 'lifecycle', label: 'Lifecycle & Assets', icon: Laptop, module: 'lifecycle' },
+    { id: 'ats', label: 'Recruitment', icon: Briefcase, module: 'ats' },
+    { id: 'ai_hub', label: 'AI Policy Hub', icon: Sparkles, module: 'ai_hub' },
+    { id: 'settings', label: 'Settings', icon: Sliders },
   ];
 
   const mySpaceNavItems: { id: string; label: string; icon: any }[] = [
-    { id: 'myspace', label: 'My Personal Workspace', icon: User },
-    { id: 'core_hr', label: 'Company Directory & Org', icon: Building2 },
-    { id: 'leave', label: 'Company Holidays & Absence', icon: CalendarOff },
-    ...(canAccessRoute('ai_hub') ? [{ id: 'ai_hub', label: 'AI Policy Assistant', icon: Sparkles }] : [])
+    { id: 'myspace', label: 'My Space', icon: User },
+    { id: 'core_hr', label: 'Directory', icon: Building2 },
+    { id: 'leave', label: 'Leave & Holidays', icon: CalendarOff },
+    ...(canAccessRoute('ai_hub') ? [{ id: 'ai_hub', label: 'Policy Assistant', icon: Sparkles }] : [])
   ];
 
-  // Strictly filter menus to only those the current user has access to
   const visibleTeamItems = teamNavItems.filter(item => canAccessRoute(item.id));
   const canAccessSettings = canAccessRoute('settings');
 
@@ -72,72 +67,53 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
     setMobileOpen(false);
   };
 
-  const seatPercentage = Math.round((currentTenant.employeeCount / currentTenant.maxSeats) * 100);
-
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-white border-r border-slate-200">
+    <div className="flex flex-col h-full bg-white border-r border-slate-200 select-none">
       {/* Brand Header */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200 shrink-0">
+      <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200 shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-sm shadow-blue-500/30">
+          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
             N
           </div>
-          <div>
-            <span className="text-sm font-bold tracking-tight text-slate-900 block leading-tight">
-              NexusHR Cloud
-            </span>
-            <span className="text-[10px] text-slate-500 font-semibold tracking-wider block">
-              MULTI-TENANT SAAS
-            </span>
-          </div>
-        </div>
-
-        {/* Close Button on Mobile Drawer */}
-        <button
-          onClick={() => setMobileOpen(false)}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 lg:hidden transition-colors"
-          aria-label="Close sidebar"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Tenant Switcher Section */}
-      <div className="p-3 border-b border-slate-200 relative shrink-0 bg-slate-50/50">
-        <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider px-1 mb-1.5 flex items-center justify-between">
-          <span>Active Tenant</span>
-          <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
-            {currentTenant.plan}
+          <span className="text-sm font-bold text-slate-900 tracking-tight">
+            NexusHR
           </span>
         </div>
 
         <button
-          onClick={() => setTenantDropdownOpen(!tenantDropdownOpen)}
-          className="w-full p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 shadow-xs transition-colors flex items-center justify-between text-left group"
+          onClick={() => setMobileOpen(false)}
+          className="p-1 text-slate-400 hover:text-slate-700 lg:hidden rounded-lg hover:bg-slate-100"
+          aria-label="Close sidebar"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-md bg-blue-50 border border-blue-200 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Tenant Switcher */}
+      <div className="p-3 border-b border-slate-100 relative shrink-0">
+        <button
+          onClick={() => setTenantDropdownOpen(!tenantDropdownOpen)}
+          className="w-full p-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
               {currentTenant.logoInitials}
             </div>
             <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+              <div className="text-xs font-semibold text-slate-900 truncate">
                 {currentTenant.name}
               </div>
-              <div className="text-[10px] text-slate-500 truncate">
-                {currentTenant.domain}
+              <div className="text-[10px] text-slate-400 truncate">
+                {currentTenant.plan}
               </div>
             </div>
           </div>
-          <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${tenantDropdownOpen ? 'rotate-180 text-blue-600' : ''}`} />
+          <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${tenantDropdownOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        {/* Switcher Dropdown List */}
         {tenantDropdownOpen && (
-          <div className="absolute top-full left-3 right-3 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 z-50 animate-in fade-in">
-            <div className="text-[10px] font-bold text-slate-500 px-2 py-1 uppercase tracking-wider">
-              Select Workspace Tenant
-            </div>
-            <div className="space-y-0.5 max-h-60 overflow-y-auto">
+          <div className="absolute top-full left-3 right-3 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-1 z-50 animate-in fade-in">
+            <div className="space-y-0.5 max-h-48 overflow-y-auto">
               {tenants.map(t => {
                 const isCurrent = t.id === currentTenant.id;
                 return (
@@ -147,61 +123,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                       switchTenant(t.id);
                       setTenantDropdownOpen(false);
                     }}
-                    className={`w-full p-2 rounded-lg flex items-center justify-between text-left transition-colors ${
-                      isCurrent 
-                        ? 'bg-blue-50 text-blue-900 border border-blue-200 font-medium' 
-                        : 'hover:bg-slate-100 text-slate-700'
+                    className={`w-full px-2 py-1.5 rounded-lg flex items-center justify-between text-left text-xs transition-colors ${
+                      isCurrent ? 'bg-blue-50 text-blue-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={`w-6 h-6 rounded text-[10px] font-bold flex items-center justify-center shrink-0 ${
-                        isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200'
-                      }`}>
-                        {t.logoInitials}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold truncate">{t.name}</div>
-                        <div className="text-[10px] text-slate-500">
-                          {t.plan} · {t.activeModules.length} Modules
-                        </div>
-                      </div>
-                    </div>
+                    <span className="truncate">{t.name}</span>
                     {isCurrent && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
                   </button>
                 );
               })}
             </div>
-
-            {canAccessSettings && (
-              <div className="mt-1 pt-1 border-t border-slate-100">
-                <button
-                  onClick={() => {
-                    setTenantDropdownOpen(false);
-                    navigateTo('settings');
-                  }}
-                  className="w-full p-1.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 flex items-center justify-center gap-1.5 rounded transition-colors font-medium"
-                >
-                  <Plus className="w-3 h-3" />
-                  Manage / Add Tenant
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* Dual Workspace View Switcher: My Space vs Team */}
-      <div className="px-3 pt-3 pb-1 shrink-0">
-        <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+      {/* Workspace Switcher: My Space vs Team */}
+      <div className="p-3 pb-1 shrink-0">
+        <div className="bg-slate-100 p-0.5 rounded-lg flex items-center">
           <button
             onClick={() => {
               setSpaceView('myspace');
               navigateTo('myspace');
             }}
-            className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-1 px-2 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeRoute === 'myspace' || spaceView === 'myspace'
-                ? 'bg-white text-blue-700 shadow-xs border border-slate-200/80'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-900'
             }`}
           >
             <User className="w-3.5 h-3.5" />
@@ -215,10 +162,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                 navigateTo('dashboard');
               }
             }}
-            className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-1 px-2 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeRoute !== 'myspace' && spaceView === 'team'
-                ? 'bg-white text-blue-700 shadow-xs border border-slate-200/80'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-900'
             }`}
           >
             <Building2 className="w-3.5 h-3.5" />
@@ -227,140 +174,56 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
         </div>
       </div>
 
-      {/* Navigation Section */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-1">
         {spaceView === 'myspace' ? (
-          <div className="space-y-1">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 mb-1 flex items-center justify-between">
-              <span>Personal Workplace</span>
-              <span className="text-[9px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">Self-Service</span>
-            </div>
-
+          <>
             {mySpaceNavItems.map(item => {
               const Icon = item.icon;
               const isActive = activeRoute === item.id;
-
               return (
                 <button
                   key={item.id}
                   onClick={() => handleNavClick(item.id)}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all group ${
-                    isActive
-                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    isActive ? 'bg-slate-900 text-white font-semibold' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                    <span className="truncate">{item.label}</span>
-                  </div>
-
-                  {item.id === 'myspace' && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0 ml-1 border ${
-                      isActive ? 'bg-white/20 text-white border-white/30' : 'bg-blue-50 text-blue-700 border-blue-200'
-                    }`}>
-                      ESS
-                    </span>
-                  )}
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
                 </button>
               );
             })}
-          </div>
+          </>
         ) : (
-          <div className="space-y-1">
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 mb-1 flex items-center justify-between">
-              <span>Team & Workspaces</span>
-              <span className="text-[9px] font-mono font-normal text-slate-400 lowercase">{currentUser.role}</span>
-            </div>
-
+          <>
             {visibleTeamItems.map(item => {
               const Icon = item.icon;
               const isActive = activeRoute === item.id;
-
               return (
                 <button
                   key={item.id}
                   onClick={() => handleNavClick(item.id)}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-all group ${
-                    isActive
-                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    isActive ? 'bg-slate-900 text-white font-semibold' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                    <span className="truncate">{item.label}</span>
-                  </div>
-
-                  {/* AI Sparkle Tag */}
-                  {item.id === 'ai_hub' && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0 ml-1 border ${
-                      isActive
-                        ? 'bg-white/20 text-white border-white/30'
-                        : 'bg-blue-50 text-blue-700 border-blue-200'
-                    }`}>
-                      AI
-                    </span>
-                  )}
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
                 </button>
               );
             })}
-          </div>
+          </>
         )}
       </div>
 
-      {/* Bottom Workspace Metrics / Identity */}
-      <div className="p-3 border-t border-slate-200 bg-slate-50/70 space-y-2.5 shrink-0">
-        {canAccessSettings ? (
-          <>
-            <div>
-              <div className="flex items-center justify-between text-[11px] mb-1">
-                <span className="text-slate-500 font-medium">Seats Utilized</span>
-                <span className="font-mono text-slate-800 font-bold tabular-nums">
-                  {currentTenant.employeeCount} / {currentTenant.maxSeats}
-                </span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    seatPercentage > 90 ? 'bg-rose-500' : 'bg-blue-600'
-                  }`}
-                  style={{ width: `${Math.min(100, seatPercentage)}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="p-2 bg-white rounded-lg border border-slate-200 flex items-center justify-between text-xs shadow-xs">
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                <div className="text-[11px] text-slate-700 font-medium">
-                  {currentTenant.activeModules.length} Modules Active
-                </div>
-              </div>
-              <button
-                onClick={() => handleNavClick('settings')}
-                className="text-[11px] text-blue-600 hover:text-blue-700 font-semibold hover:underline"
-              >
-                Configure
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="p-2.5 bg-white rounded-lg border border-slate-200 shadow-2xs">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
-                {currentUser.avatarInitials}
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-900 truncate">
-                  {currentUser.name}
-                </div>
-                <div className="text-[10px] text-slate-500 truncate">
-                  {currentUser.role} · {currentTenant.name}
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Bottom info */}
+      <div className="p-3 border-t border-slate-100 text-xs text-slate-400 flex items-center justify-between shrink-0">
+        <span>{currentTenant.employeeCount} / {currentTenant.maxSeats} seats</span>
+        {canAccessSettings && (
+          <button onClick={() => handleNavClick('settings')} className="text-blue-600 font-semibold hover:underline">
+            Manage
+          </button>
         )}
       </div>
     </div>
@@ -368,19 +231,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
 
   return (
     <>
-      {/* Desktop Persistent Sidebar */}
-      <aside className="hidden lg:block w-64 h-full shrink-0 z-20">
+      <aside className="hidden lg:block w-56 h-full shrink-0 z-20">
         {sidebarContent}
       </aside>
 
-      {/* Mobile Drawer Backdrop & Sidebar */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div 
-            className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity" 
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs" 
             onClick={() => setMobileOpen(false)}
           />
-          <div className="relative w-64 max-w-[80vw] h-full shadow-2xl z-10">
+          <div className="relative w-56 max-w-[80vw] h-full shadow-xl z-10">
             {sidebarContent}
           </div>
         </div>

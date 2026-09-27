@@ -16,7 +16,9 @@ import {
   RolePermissionConfig,
   ExpenseClaim,
   Asset,
-  ExitClearance
+  ExitClearance,
+  CompanyHoliday,
+  TeamCelebration
 } from '../types/hrms';
 import { canUserAccessRoute } from '../utils/accessControl';
 import { 
@@ -33,6 +35,8 @@ import {
   INITIAL_EXPENSES,
   INITIAL_ASSETS,
   INITIAL_EXIT_CLEARANCES,
+  INITIAL_HOLIDAYS,
+  INITIAL_CELEBRATIONS,
   MODULE_CATALOG
 } from '../data/initialData';
 
@@ -119,6 +123,13 @@ interface TenantContextType {
   calculateFandF: (clearanceId: string) => void;
   settleFandF: (clearanceId: string) => void;
 
+  // Holidays & Team Celebrations
+  holidays: CompanyHoliday[];
+  addHoliday: (holidayData: Omit<CompanyHoliday, 'id'>) => void;
+  updateHoliday: (id: string, updates: Partial<CompanyHoliday>) => void;
+  deleteHoliday: (id: string) => void;
+  celebrations: TeamCelebration[];
+
   // Navigation State
   activeRoute: string;
   navigateTo: (route: string) => void;
@@ -144,6 +155,7 @@ const LOCAL_STORAGE_KEY_CANDIDATES = 'nexushr_candidates_v3';
 const LOCAL_STORAGE_KEY_EXPENSES = 'nexushr_expenses_v3';
 const LOCAL_STORAGE_KEY_ASSETS = 'nexushr_assets_v3';
 const LOCAL_STORAGE_KEY_EXITS = 'nexushr_exits_v3';
+const LOCAL_STORAGE_KEY_HOLIDAYS = 'nexushr_holidays_v3';
 const LOCAL_STORAGE_KEY_RBAC = 'nexushr_rbac_permissions_v3';
 
 export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -218,6 +230,12 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return saved ? JSON.parse(saved) : INITIAL_EXIT_CLEARANCES;
   });
 
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY_HOLIDAYS);
+    return saved ? JSON.parse(saved) : INITIAL_HOLIDAYS;
+  });
+  const [celebrations] = useState<TeamCelebration[]>(INITIAL_CELEBRATIONS);
+
   const [activeRoute, setActiveRoute] = useState<string>('dashboard');
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
 
@@ -273,6 +291,10 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY_EXITS, JSON.stringify(allExits));
   }, [allExits]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY_HOLIDAYS, JSON.stringify(holidays));
+  }, [holidays]);
 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY_RBAC, JSON.stringify(rolePermissions));
@@ -337,8 +359,11 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Toast Helpers
   const showToast = (title: string, message: string, type: 'success' | 'info' | 'warning' | 'error' = 'info') => {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     setToasts(prev => [...prev, { id, title, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3200);
   };
 
   const dismissToast = (id: string) => {
@@ -587,6 +612,7 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       department,
       date: today,
       clockInTime: nowTime,
+      clockIn: nowTime,
       status: 'present',
       locationType: 'Office (HQ)'
     };
@@ -602,7 +628,9 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         return {
           ...r,
           clockOutTime: nowTime,
-          totalHoursWorked: 8.5
+          clockOut: nowTime,
+          totalHoursWorked: 8.5,
+          totalWorkHours: 8.5
         };
       }
       return r;
@@ -628,6 +656,31 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const updateLeaveStatus = (id: string, status: 'approved' | 'rejected', approver: string = currentUser.name) => {
+    const target = allLeave.find(l => l.id === id);
+    if (!target) return;
+
+    // Segregation of duties: Check if user is attempting self-approval
+    const activeEmp = allEmployees.find(e => 
+      e.id === currentUser.id ||
+      e.email.toLowerCase() === currentUser.email.toLowerCase() ||
+      `${e.firstName} ${e.lastName}`.toLowerCase() === currentUser.name.toLowerCase()
+    );
+
+    const isSelf = 
+      target.employeeId === currentUser.id ||
+      (activeEmp && target.employeeId === activeEmp.id) ||
+      target.employeeName.toLowerCase().trim() === currentUser.name.toLowerCase().trim();
+
+    if (isSelf) {
+      showToast('Self-Approval Prohibited', 'Company policy prohibits approving or rejecting your own leave request. A separate manager must review it.', 'warning');
+      return;
+    }
+
+    if (!hasPermission('approve_leaves')) {
+      showToast('Permission Denied', 'Your current role is not authorized to approve leave requests.', 'error');
+      return;
+    }
+
     setAllLeave(prev => prev.map(l => {
       if (l.id === id) {
         return {
@@ -811,6 +864,30 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const approveExpenseClaim = (claimId: string) => {
+    const target = allExpenses.find(c => c.id === claimId);
+    if (!target) return;
+
+    const activeEmp = allEmployees.find(e => 
+      e.id === currentUser.id ||
+      e.email.toLowerCase() === currentUser.email.toLowerCase() ||
+      `${e.firstName} ${e.lastName}`.toLowerCase() === currentUser.name.toLowerCase()
+    );
+
+    const isSelf = 
+      target.employeeId === currentUser.id ||
+      (activeEmp && target.employeeId === activeEmp.id) ||
+      target.employeeName.toLowerCase().trim() === currentUser.name.toLowerCase().trim();
+
+    if (isSelf) {
+      showToast('Self-Approval Prohibited', 'You cannot approve your own expense claim. Another authorized officer or manager must review it.', 'warning');
+      return;
+    }
+
+    if (!hasPermission('approve_expenses')) {
+      showToast('Permission Denied', 'Your current role is not authorized to approve expense claims.', 'error');
+      return;
+    }
+
     setAllExpenses(prev => prev.map(c => {
       if (c.id === claimId) {
         return {
@@ -827,6 +904,30 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const rejectExpenseClaim = (claimId: string) => {
+    const target = allExpenses.find(c => c.id === claimId);
+    if (!target) return;
+
+    const activeEmp = allEmployees.find(e => 
+      e.id === currentUser.id ||
+      e.email.toLowerCase() === currentUser.email.toLowerCase() ||
+      `${e.firstName} ${e.lastName}`.toLowerCase() === currentUser.name.toLowerCase()
+    );
+
+    const isSelf = 
+      target.employeeId === currentUser.id ||
+      (activeEmp && target.employeeId === activeEmp.id) ||
+      target.employeeName.toLowerCase().trim() === currentUser.name.toLowerCase().trim();
+
+    if (isSelf) {
+      showToast('Self-Rejection Prohibited', 'You cannot process your own expense claim.', 'warning');
+      return;
+    }
+
+    if (!hasPermission('approve_expenses')) {
+      showToast('Permission Denied', 'Your current role is not authorized to review expense claims.', 'error');
+      return;
+    }
+
     setAllExpenses(prev => prev.map(c => {
       if (c.id === claimId) {
         return {
@@ -964,6 +1065,25 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     showToast('F&F Settlement Finalized', 'Full & Final payment processed and service certificate issued.', 'success');
   };
 
+  const addHoliday = (holidayData: Omit<CompanyHoliday, 'id'>) => {
+    const newHol: CompanyHoliday = {
+      ...holidayData,
+      id: `HOL-${Date.now().toString().slice(-4)}`
+    };
+    setHolidays(prev => [...prev, newHol].sort((a, b) => a.date.localeCompare(b.date)));
+    showToast('Holiday Added', `${newHol.name} added to the company calendar.`, 'success');
+  };
+
+  const updateHoliday = (id: string, updates: Partial<CompanyHoliday>) => {
+    setHolidays(prev => prev.map(h => h.id === id ? { ...h, ...updates } : h).sort((a, b) => a.date.localeCompare(b.date)));
+    showToast('Holiday Updated', 'Holiday schedule details updated.', 'success');
+  };
+
+  const deleteHoliday = (id: string) => {
+    setHolidays(prev => prev.filter(h => h.id !== id));
+    showToast('Holiday Removed', 'Holiday removed from corporate schedule.', 'info');
+  };
+
   return (
     <TenantContext.Provider value={{
       tenants,
@@ -1017,6 +1137,11 @@ export const TenantProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       toggleClearanceItem,
       calculateFandF,
       settleFandF,
+      holidays,
+      addHoliday,
+      updateHoliday,
+      deleteHoliday,
+      celebrations,
       activeRoute,
       navigateTo: setActiveRoute,
       toasts,

@@ -17,14 +17,14 @@ import {
   User, 
   Building2, 
   Briefcase, 
-  Shield, 
   ChevronRight,
   TrendingUp,
-  HelpCircle,
   Play,
   Square,
-  Coffee,
-  X
+  X,
+  Calendar,
+  Gift,
+  Award
 } from 'lucide-react';
 import { ExpenseClaim } from '../types/hrms';
 
@@ -42,6 +42,8 @@ export const MySpacePage: React.FC = () => {
     expenses,
     submitExpenseClaim,
     assets,
+    holidays,
+    celebrations,
     showToast,
     isModuleSubscribed,
     navigateTo
@@ -49,34 +51,34 @@ export const MySpacePage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'overview' | 'attendance' | 'leave' | 'payslips' | 'expenses' | 'assets' | 'copilot'>('overview');
   
-  // Modals state
+  // Modals
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
 
-  // Leave Form State
+  // Leave Form
   const [leaveType, setLeaveType] = useState<string>('Paid Leave');
   const [leaveStartDate, setLeaveStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [leaveEndDate, setLeaveEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [leaveDays, setLeaveDays] = useState(1);
   const [leaveReason, setLeaveReason] = useState('');
 
-  // Expense Form State
+  // Expense Form
   const [expenseMerchant, setExpenseMerchant] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseClaim['category']>('Client Meal');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseNotes, setExpenseNotes] = useState('');
 
-  // Copilot Assistant state
+  // Copilot Assistant
   const [copilotQuestion, setCopilotQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState<Array<{ role: 'user' | 'assistant'; text: string; time: string }>>([
     {
       role: 'assistant',
-      text: `Hello ${currentUser.name}! I am your ${currentTenant.name} Employee Handbook & Policy Assistant. Ask me anything regarding leave entitlements, expense reimbursement limits, work-from-home guidelines, or health benefits.`,
+      text: `Hello ${currentUser.name}. Ask me about ${currentTenant.name}'s leave policy, expense limits, or benefits.`,
       time: 'Just now'
     }
   ]);
 
-  // Match or generate employee record for current user
+  // Current employee record
   const currentEmpRecord = useMemo(() => {
     const match = employees.find(e => 
       e.email.toLowerCase() === currentUser.email.toLowerCase() || 
@@ -100,17 +102,22 @@ export const MySpacePage: React.FC = () => {
   // Personal Attendance Records
   const myAttendance = useMemo(() => {
     return attendanceRecords.filter(a => 
+      a.employeeId === currentUser.id ||
       a.employeeName.toLowerCase().includes(currentEmpRecord.firstName.toLowerCase()) ||
       a.employeeName.toLowerCase().includes(currentUser.name.toLowerCase())
     );
   }, [attendanceRecords, currentEmpRecord, currentUser]);
 
-  const todayRecord = myAttendance.find(a => a.date === new Date().toISOString().split('T')[0]);
-  const isClockedIn = todayRecord && !todayRecord.clockOut;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayRecord = myAttendance.find(a => a.date === todayStr);
+
+  const isClockedIn = Boolean(todayRecord && !(todayRecord.clockOut || todayRecord.clockOutTime));
+  const isClockedOut = Boolean(todayRecord && (todayRecord.clockOut || todayRecord.clockOutTime));
 
   // Personal Leaves
   const myLeaves = useMemo(() => {
     return leaveRequests.filter(l => 
+      l.employeeId === currentEmpRecord.id ||
       l.employeeName.toLowerCase().includes(currentEmpRecord.firstName.toLowerCase()) ||
       l.employeeName.toLowerCase().includes(currentUser.name.toLowerCase())
     );
@@ -119,6 +126,7 @@ export const MySpacePage: React.FC = () => {
   // Personal Payslips
   const myPayslips = useMemo(() => {
     return payslips.filter(p => 
+      p.employeeId === currentEmpRecord.id ||
       p.employeeName.toLowerCase().includes(currentEmpRecord.firstName.toLowerCase()) ||
       p.employeeName.toLowerCase().includes(currentUser.name.toLowerCase())
     );
@@ -127,6 +135,7 @@ export const MySpacePage: React.FC = () => {
   // Personal Expenses
   const myExpenses = useMemo(() => {
     return expenses.filter(e => 
+      e.employeeId === currentEmpRecord.id ||
       e.employeeName.toLowerCase().includes(currentEmpRecord.firstName.toLowerCase()) ||
       e.employeeName.toLowerCase().includes(currentUser.name.toLowerCase())
     );
@@ -138,19 +147,17 @@ export const MySpacePage: React.FC = () => {
   }, [assets, currentEmpRecord]);
 
   const handlePunchClock = () => {
-    if (!isClockedIn) {
-      logAttendanceClockIn(`${currentEmpRecord.firstName} ${currentEmpRecord.lastName}`, currentEmpRecord.department);
-      showToast('Clocked In Successfully', `Logged check-in at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 'success');
-    } else if (todayRecord) {
+    if (isClockedIn && todayRecord) {
       logAttendanceClockOut(todayRecord.id);
-      showToast('Clocked Out Successfully', `Logged check-out. Total hours recorded for today.`, 'info');
+    } else {
+      logAttendanceClockIn(`${currentEmpRecord.firstName} ${currentEmpRecord.lastName}`, currentEmpRecord.department);
     }
   };
 
   const handleLeaveSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!leaveReason.trim()) {
-      showToast('Validation Error', 'Please enter a brief reason for your leave.', 'warning');
+      showToast('Required', 'Please enter a brief reason.', 'warning');
       return;
     }
 
@@ -168,14 +175,13 @@ export const MySpacePage: React.FC = () => {
 
     setShowLeaveModal(false);
     setLeaveReason('');
-    showToast('Leave Request Submitted', `Your ${leaveType} request for ${leaveDays} day(s) has been routed to your manager for approval.`, 'success');
   };
 
   const handleExpenseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(expenseAmount);
     if (!expenseMerchant.trim() || isNaN(amt) || amt <= 0) {
-      showToast('Validation Error', 'Please enter a valid merchant/title and amount.', 'warning');
+      showToast('Required', 'Please enter merchant and a valid amount.', 'warning');
       return;
     }
 
@@ -188,8 +194,6 @@ export const MySpacePage: React.FC = () => {
       amount: amt,
       currency: currentTenant.currency || '$',
       transactionDate: new Date().toISOString().split('T')[0],
-      receiptUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&q=80',
-      receiptName: 'Receipt_Attachment.pdf',
       notes: expenseNotes
     });
 
@@ -197,7 +201,6 @@ export const MySpacePage: React.FC = () => {
     setExpenseMerchant('');
     setExpenseAmount('');
     setExpenseNotes('');
-    showToast('Expense Claim Submitted', `Submitted claim of ${currentTenant.currency || '$'}${amt} for approval.`, 'success');
   };
 
   const handleAskCopilot = (e: React.FormEvent) => {
@@ -211,15 +214,15 @@ export const MySpacePage: React.FC = () => {
     const qLower = query.toLowerCase();
 
     if (qLower.includes('leave') || qLower.includes('pto') || qLower.includes('vacation') || qLower.includes('sick')) {
-      responseText = `According to ${currentTenant.name}'s policy handbook, full-time staff accrue paid leave monthly. You currently have ${currentEmpRecord.leaveBalance.paid} Paid Leave days and ${currentEmpRecord.leaveBalance.sick} Sick Leave days available in your wallet. Requests exceeding 3 consecutive business days require 1-week prior notification.`;
-    } else if (qLower.includes('expense') || qLower.includes('reimburse') || qLower.includes('meal') || qLower.includes('travel')) {
-      responseText = `${currentTenant.name} provides direct payroll reimbursements for approved business expenses. Client dinners are capped at $75/person, and travel lodging adheres to standard corporate tier limits. Receipts must be attached within 30 days of the spend date.`;
+      responseText = `You have ${currentEmpRecord.leaveBalance.paid} Paid Leave and ${currentEmpRecord.leaveBalance.sick} Sick Leave days remaining.`;
+    } else if (qLower.includes('expense') || qLower.includes('reimburse') || qLower.includes('meal')) {
+      responseText = `Client meals are capped at $75/person. Submit receipts within 30 days for payroll reimbursement.`;
     } else if (qLower.includes('work from home') || qLower.includes('wfh') || qLower.includes('remote')) {
-      responseText = `${currentTenant.name} operates on a flexible hybrid work model (2-3 days remote per week with manager coordination). Core collaboration hours are 10:00 AM to 4:00 PM in your local timezone.`;
+      responseText = `Hybrid policy allows 2 remote days weekly with core hours 10:00 AM - 4:00 PM.`;
     } else if (qLower.includes('payroll') || qLower.includes('salary') || qLower.includes('pay day')) {
-      responseText = `Payroll at ${currentTenant.name} is processed monthly and disbursed directly to your registered bank account on the 28th of each calendar month. Digital payslips are immediately accessible under your "Payslips" tab.`;
+      responseText = `Salaries are disbursed on the 28th of each month via direct deposit.`;
     } else {
-      responseText = `Under ${currentTenant.name} standard workplace guidelines, all staff enjoy comprehensive health coverage, continuous learning stipends up to $1,000/year, and ergonomic home-office allowances. Please consult your HR Manager (${currentUser.department}) for unique exception approvals.`;
+      responseText = `For specific policy exceptions, contact HR (${currentUser.department}).`;
     }
 
     setChatHistory(prev => [
@@ -231,84 +234,84 @@ export const MySpacePage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 pb-12 max-w-full">
-      {/* 1. Header Profile & Workspace Banner */}
-      <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-900 rounded-2xl text-white p-6 sm:p-8 shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 bottom-0 opacity-10 pointer-events-none flex items-center pr-8">
-          <User className="w-80 h-80 text-white" />
+    <div className="space-y-5 pb-10 max-w-full">
+      {/* 1. Header Profile Banner */}
+      <div className="bg-slate-900 rounded-xl text-white p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-lg font-bold text-white shrink-0">
+            {currentUser.avatarInitials}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-white">{currentUser.name}</h1>
+              <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                {currentUser.role}
+              </span>
+            </div>
+            <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+              <span>{currentEmpRecord.department}</span>
+              <span>·</span>
+              <span className="font-mono">{currentEmpRecord.id}</span>
+              <span>·</span>
+              <span>{currentTenant.name}</span>
+            </div>
+          </div>
         </div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-2xl font-bold text-white shrink-0 shadow-inner">
-              {currentUser.avatarInitials}
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-                  {currentUser.name}
-                </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/20 text-white border border-white/30 backdrop-blur-xs">
-                  {currentUser.role}
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-400/20 text-emerald-200 border border-emerald-300/30">
-                  {currentTenant.name}
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-blue-100 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span>{currentEmpRecord.department}</span>
-                <span>•</span>
-                <span>ID: <strong className="font-mono text-white">{currentEmpRecord.id}</strong></span>
-                <span>•</span>
-                <span>Location: {currentEmpRecord.location || currentTenant.headquarters}</span>
-              </p>
+        {/* Punch In / Out Box */}
+        <div className="flex items-center gap-3 bg-slate-800/80 px-3.5 py-2.5 rounded-lg border border-slate-700/60 self-start sm:self-auto">
+          <div className="text-left pr-1">
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">Status</div>
+            <div className="text-xs font-semibold flex items-center gap-1.5 text-white">
+              <span className={`w-2 h-2 rounded-full ${isClockedIn ? 'bg-emerald-400 animate-pulse' : isClockedOut ? 'bg-blue-400' : 'bg-slate-500'}`} />
+              {isClockedIn 
+                ? `Active (${todayRecord?.clockIn || todayRecord?.clockInTime})` 
+                : isClockedOut 
+                ? `Clocked Out (${todayRecord?.clockOut || todayRecord?.clockOutTime})`
+                : 'Not Clocked In'}
             </div>
           </div>
 
-          {/* Quick Clock-In / Punch Action */}
-          <div className="flex flex-wrap items-center gap-3 bg-white/10 backdrop-blur-md p-3 rounded-xl border border-white/20 self-start md:self-auto">
-            <div className="text-left pr-2">
-              <div className="text-[10px] text-blue-200 font-bold uppercase tracking-wider">Attendance Status</div>
-              <div className="text-sm font-bold flex items-center gap-1.5 text-white">
-                <span className={`w-2.5 h-2.5 rounded-full ${isClockedIn ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
-                {isClockedIn ? 'Clocked In (Active)' : 'Not Clocked In'}
-              </div>
-            </div>
-
-            <button
-              onClick={handlePunchClock}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 ${
-                isClockedIn 
-                  ? 'bg-rose-500 hover:bg-rose-600 text-white' 
-                  : 'bg-emerald-500 hover:bg-emerald-600 text-white'
-              }`}
-            >
-              {isClockedIn ? (
-                <>
-                  <Square className="w-3.5 h-3.5 fill-current" />
-                  Clock Out
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  Clock In Now
-                </>
-              )}
-            </button>
-          </div>
+          <button
+            onClick={handlePunchClock}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              isClockedIn 
+                ? 'bg-rose-600 hover:bg-rose-700 text-white' 
+                : isClockedOut
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+          >
+            {isClockedIn ? (
+              <>
+                <Square className="w-3.5 h-3.5 fill-current" />
+                Clock Out
+              </>
+            ) : isClockedOut ? (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                Clock In Again
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                Clock In
+              </>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* 2. My Space Navigation Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar gap-1 bg-white p-1 rounded-xl shadow-2xs">
+      {/* 2. Navigation Tabs */}
+      <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar gap-1 bg-white p-1 rounded-lg">
         {[
-          { id: 'overview', label: 'My Dashboard', icon: TrendingUp },
-          { id: 'attendance', label: 'My Attendance', icon: Clock },
-          { id: 'leave', label: 'Leave & Time-Off', icon: CalendarOff, count: myLeaves.length },
-          { id: 'payslips', label: 'Payslips & Comp', icon: Receipt, count: myPayslips.length },
-          ...(isModuleSubscribed('expenses') ? [{ id: 'expenses', label: 'My Expenses', icon: CreditCard, count: myExpenses.length }] : []),
-          ...(isModuleSubscribed('lifecycle') ? [{ id: 'assets', label: 'My Assets', icon: Laptop, count: myAssets.length }] : []),
-          ...(isModuleSubscribed('ai_hub') ? [{ id: 'copilot', label: 'AI Policy Assistant', icon: Sparkles }] : []),
+          { id: 'overview', label: 'Overview', icon: TrendingUp },
+          { id: 'attendance', label: 'Attendance', icon: Clock },
+          { id: 'leave', label: 'Leave', icon: CalendarOff, count: myLeaves.length },
+          { id: 'payslips', label: 'Payslips', icon: Receipt, count: myPayslips.length },
+          ...(isModuleSubscribed('expenses') ? [{ id: 'expenses', label: 'Expenses', icon: CreditCard, count: myExpenses.length }] : []),
+          ...(isModuleSubscribed('lifecycle') ? [{ id: 'assets', label: 'Assets', icon: Laptop, count: myAssets.length }] : []),
+          ...(isModuleSubscribed('ai_hub') ? [{ id: 'copilot', label: 'Policy Bot', icon: Sparkles }] : []),
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -316,17 +319,17 @@ export const MySpacePage: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-2.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-2 ${
                 isActive 
-                  ? 'bg-blue-600 text-white shadow-xs' 
+                  ? 'bg-slate-900 text-white' 
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
-              <Icon className="w-4 h-4 shrink-0" />
+              <Icon className="w-3.5 h-3.5 shrink-0" />
               <span>{tab.label}</span>
-              {typeof tab.count === 'number' && (
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+              {typeof tab.count === 'number' && tab.count > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  isActive ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'
                 }`}>
                   {tab.count}
                 </span>
@@ -338,420 +341,309 @@ export const MySpacePage: React.FC = () => {
 
       {/* 3. Tab Contents */}
 
-      {/* TAB A: OVERVIEW */}
+      {/* OVERVIEW */}
       {activeTab === 'overview' && (
-        <div className="space-y-6">
-          {/* Top 4 Self-Service Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 1. Leave Wallet Summary */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Leave Balance</span>
-                <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
-                  <CalendarOff className="w-4 h-4" />
-                </div>
+        <div className="space-y-5">
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <div className="text-xs text-slate-500 font-medium">Leave Balance</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {currentEmpRecord.leaveBalance.paid + currentEmpRecord.leaveBalance.sick} <span className="text-xs font-normal text-slate-500">days</span>
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">
-                {currentEmpRecord.leaveBalance.paid + currentEmpRecord.leaveBalance.sick} <span className="text-xs font-normal text-slate-500">Days Available</span>
-              </div>
-              <div className="mt-3 flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-                <span className="text-slate-500">{currentEmpRecord.leaveBalance.paid} Paid • {currentEmpRecord.leaveBalance.sick} Sick</span>
-                <button
-                  onClick={() => setShowLeaveModal(true)}
-                  className="text-blue-600 hover:text-blue-700 font-bold"
-                >
-                  Apply +
-                </button>
+              <div className="mt-2 text-xs text-slate-500 flex justify-between items-center">
+                <span>{currentEmpRecord.leaveBalance.paid} Paid · {currentEmpRecord.leaveBalance.sick} Sick</span>
+                <button onClick={() => setShowLeaveModal(true)} className="text-blue-600 font-semibold hover:underline">Apply</button>
               </div>
             </div>
 
-            {/* 2. Today's Punch Time */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Today's Check-In</span>
-                <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600">
-                  <Clock className="w-4 h-4" />
-                </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <div className="text-xs text-slate-500 font-medium">Today's Attendance</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {todayRecord?.clockIn || todayRecord?.clockInTime || '—'}
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">
-                {todayRecord?.clockIn || '--:--'}
-              </div>
-              <div className="mt-3 flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-                <span className="text-slate-500">Shift: 09:00 - 18:00</span>
+              <div className="mt-2 text-xs text-slate-500 flex justify-between items-center">
+                <span>Out: {todayRecord?.clockOut || todayRecord?.clockOutTime || 'Active'}</span>
                 <span className={`font-semibold ${isClockedIn ? 'text-emerald-600' : 'text-slate-500'}`}>
-                  {isClockedIn ? 'Active' : 'Off Clock'}
+                  {isClockedIn ? 'Working' : isClockedOut ? 'Ended' : 'Off'}
                 </span>
               </div>
             </div>
 
-            {/* 3. Monthly Net Salary */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Latest Net Salary</span>
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
-                  <Receipt className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-2xl font-extrabold text-slate-900">
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <div className="text-xs text-slate-500 font-medium">Monthly Pay</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
                 {currentTenant.currency || '$'}{Math.round(currentEmpRecord.salary / 12 * 0.78).toLocaleString()}
               </div>
-              <div className="mt-3 flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-                <span className="text-slate-500">Disbursed on 28th</span>
-                <button
-                  onClick={() => setActiveTab('payslips')}
-                  className="text-blue-600 hover:text-blue-700 font-bold"
-                >
-                  View Slip
-                </button>
+              <div className="mt-2 text-xs text-slate-500 flex justify-between items-center">
+                <span>Next: 28th</span>
+                <button onClick={() => setActiveTab('payslips')} className="text-blue-600 font-semibold hover:underline">View</button>
               </div>
             </div>
 
-            {/* 4. Company AI Policy Copilot */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">AI Policy Copilot</span>
-                <div className="w-8 h-8 rounded-lg bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-600">
-                  <Sparkles className="w-4 h-4" />
-                </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <div className="text-xs text-slate-500 font-medium">Policy Help</div>
+              <div className="text-base font-bold text-slate-900 mt-1">
+                AI Assistant
               </div>
-              <div className="text-sm font-bold text-slate-800">
-                24/7 Policy Answers
-              </div>
-              <div className="mt-3 flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-                <span className="text-slate-500">Leave, perks & WFH</span>
-                <button
-                  onClick={() => setActiveTab('copilot')}
-                  className="text-purple-600 hover:text-purple-700 font-bold flex items-center gap-1"
-                >
-                  Ask Copilot
-                  <ChevronRight className="w-3 h-3" />
-                </button>
+              <div className="mt-2 text-xs text-slate-500 flex justify-between items-center">
+                <span>Company handbook</span>
+                <button onClick={() => setActiveTab('copilot')} className="text-blue-600 font-semibold hover:underline">Open</button>
               </div>
             </div>
           </div>
 
-          {/* Quick Actions & Recent Leaves */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left: Quick Actions Grid */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-blue-600" />
-                Quick Self-Service Actions
-              </h2>
-
-              <div className="space-y-2.5">
-                <button
-                  onClick={() => setShowLeaveModal(true)}
-                  className="w-full p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 transition-all flex items-center justify-between text-left group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center text-xs font-bold">
-                      <CalendarOff className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 group-hover:text-blue-600">Apply for Time-Off</div>
-                      <div className="text-[11px] text-slate-500">Paid, sick, casual or parental leave</div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
-                </button>
-
-                {isModuleSubscribed('expenses') && (
-                  <button
-                    onClick={() => setShowExpenseModal(true)}
-                    className="w-full p-3 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-all flex items-center justify-between text-left group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center text-xs font-bold">
-                        <CreditCard className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-600">Submit Expense Claim</div>
-                        <div className="text-[11px] text-slate-500">Upload receipt for reimbursement</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setActiveTab('payslips')}
-                  className="w-full p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 transition-all flex items-center justify-between text-left group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center text-xs font-bold">
-                      <Receipt className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 group-hover:text-blue-600">Download Latest Payslip</div>
-                      <div className="text-[11px] text-slate-500">PDF salary voucher & tax breakdown</div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600" />
-                </button>
-
-                <button
-                  onClick={() => navigateTo('core_hr')}
-                  className="w-full p-3 rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all flex items-center justify-between text-left group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center text-xs font-bold">
-                      <Building2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 group-hover:text-indigo-600">View Team Directory & Org Chart</div>
-                      <div className="text-[11px] text-slate-500">Colleagues and reporting hierarchy</div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
-                </button>
-              </div>
-            </div>
-
-            {/* Middle & Right: Leave & Attendance Status */}
-            <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <CalendarOff className="w-4 h-4 text-amber-600" />
-                  My Recent Leave Requests
-                </h2>
-                <button
-                  onClick={() => setShowLeaveModal(true)}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  New Leave
-                </button>
-              </div>
-
-              {myLeaves.length === 0 ? (
-                <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl">
-                  <CalendarOff className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-xs font-semibold text-slate-700">No active leave requests</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">You haven't requested any time-off recently.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
-                        <th className="py-2.5 px-3">Type</th>
-                        <th className="py-2.5 px-3">Dates</th>
-                        <th className="py-2.5 px-3">Days</th>
-                        <th className="py-2.5 px-3">Reason</th>
-                        <th className="py-2.5 px-3 text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {myLeaves.slice(0, 5).map(l => (
-                        <tr key={l.id} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-3 font-semibold text-slate-900">
-                            {l.leaveType}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-600">
-                            {l.startDate} to {l.endDate}
-                          </td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
-                            {l.days || l.daysCount || 1} {(l.days || l.daysCount) === 1 ? 'day' : 'days'}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate">
-                            {l.reason}
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                              l.status === 'approved' 
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                                : l.status === 'rejected' 
-                                ? 'bg-rose-50 text-rose-700 border border-rose-200' 
-                                : 'bg-amber-50 text-amber-700 border border-amber-200'
-                            }`}>
-                              {l.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB B: ATTENDANCE */}
-      {activeTab === 'attendance' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Clock Status Card */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Punch Status</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isClockedIn ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                  {isClockedIn ? 'ONLINE' : 'OFFLINE'}
-                </span>
-              </div>
-
-              <div className="text-center py-4 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="text-3xl font-mono font-bold text-slate-900">
-                  {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </div>
-                <div className="text-xs text-slate-500 mt-1 flex items-center justify-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                  {currentTenant.headquarters} (Geofence Verified)
-                </div>
-              </div>
-
+          {/* Recent Leaves Table */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Recent Leave Requests</h2>
               <button
-                onClick={handlePunchClock}
-                className={`w-full py-3 rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 ${
-                  isClockedIn
-                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                }`}
+                onClick={() => setShowLeaveModal(true)}
+                className="px-2.5 py-1 bg-slate-900 text-white rounded text-xs font-semibold hover:bg-slate-800"
               >
-                {isClockedIn ? (
-                  <>
-                    <Square className="w-4 h-4 fill-current" />
-                    Punch Out (End Today's Shift)
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 fill-current" />
-                    Punch In (Start Shift)
-                  </>
-                )}
+                + Request Leave
               </button>
             </div>
 
-            {/* Shift Details */}
-            <div className="md:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-              <h2 className="text-sm font-bold text-slate-900">Assigned Shift & Weekly Schedule</h2>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-200">
-                  <div className="text-[11px] font-bold text-blue-700 uppercase">Primary Shift</div>
-                  <div className="text-base font-bold text-slate-900 mt-1">General Day Shift</div>
-                  <div className="text-xs text-slate-600 mt-1">09:00 AM - 06:00 PM (1h lunch break)</div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase">Work Model</div>
-                  <div className="text-base font-bold text-slate-900 mt-1">Hybrid (Flexible)</div>
-                  <div className="text-xs text-slate-600 mt-1">2 Days Remote / 3 Days In-Office</div>
-                </div>
+            {myLeaves.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">No recent leave requests.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-400 font-semibold text-[11px]">
+                      <th className="py-2 px-3">Type</th>
+                      <th className="py-2 px-3">Dates</th>
+                      <th className="py-2 px-3">Days</th>
+                      <th className="py-2 px-3">Reason</th>
+                      <th className="py-2 px-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {myLeaves.slice(0, 5).map(l => (
+                      <tr key={l.id}>
+                        <td className="py-2 px-3 font-medium text-slate-900">{l.leaveType}</td>
+                        <td className="py-2 px-3 text-slate-600">{l.startDate} to {l.endDate}</td>
+                        <td className="py-2 px-3 text-slate-800 font-semibold">{l.days || l.daysCount || 1}d</td>
+                        <td className="py-2 px-3 text-slate-500 truncate max-w-xs">{l.reason}</td>
+                        <td className="py-2 px-3 text-right">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                            l.status === 'approved' 
+                              ? 'bg-emerald-50 text-emerald-700' 
+                              : l.status === 'rejected' 
+                              ? 'bg-rose-50 text-rose-700' 
+                              : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {l.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
-              <div className="pt-2 text-xs text-slate-500">
-                Weekly Target: <strong>40.0 Hours</strong> • Overtime Policy: Automatic calculation over 8h/day.
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Punch History */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-            <h2 className="text-sm font-bold text-slate-900">My Attendance History</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Clock In</th>
-                    <th className="py-2.5 px-3">Clock Out</th>
-                    <th className="py-2.5 px-3">Total Work</th>
-                    <th className="py-2.5 px-3 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {myAttendance.map(att => (
-                    <tr key={att.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-medium text-slate-900">{att.date}</td>
-                      <td className="py-2.5 px-3 font-mono text-emerald-700 font-semibold">{att.clockIn || att.clockInTime || '09:00'}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">{att.clockOut || att.clockOutTime || 'Active'}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800">{att.totalWorkHours || att.totalHoursWorked || 8.0} hrs</td>
-                      <td className="py-2.5 px-3 text-right">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          att.status === 'present' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          {att.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* Upcoming Holidays & Celebrations Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Upcoming Company Holidays */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-blue-700" />
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Upcoming Holidays</h3>
+                </div>
+                <span className="text-[10px] font-mono text-slate-500">Official Company Days</span>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {(holidays || []).slice(0, 3).map(h => {
+                  const d = new Date(h.date);
+                  const month = d.toLocaleString('en-US', { month: 'short' });
+                  const day = d.getDate();
+
+                  return (
+                    <div key={h.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 text-center flex flex-col justify-center shrink-0">
+                          <span className="text-[8px] font-bold text-slate-500 uppercase leading-none">{month}</span>
+                          <span className="text-xs font-bold text-slate-900 font-mono leading-none mt-0.5">{day}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-900 truncate">{h.name}</div>
+                          <div className="text-[11px] text-slate-500">{h.dayOfWeek} · {h.date}</div>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border shrink-0 ${
+                        h.type === 'Public / Statutory'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-blue-50 text-blue-800 border-blue-200'
+                      }`}>
+                        {h.type}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Upcoming Team Celebrations */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Gift className="w-4 h-4 text-purple-600" />
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Birthdays & Anniversaries</h3>
+                </div>
+                <span className="text-[10px] font-mono text-slate-500">Team Milestones</span>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {(celebrations || []).slice(0, 3).map(c => {
+                  const isAnniversary = c.type === 'anniversary';
+
+                  return (
+                    <div key={c.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 text-slate-800 font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {c.avatarInitials}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-slate-900 truncate">{c.employeeName}</div>
+                          <div className="text-[11px] text-slate-500 truncate">{c.role} · {c.department}</div>
+                        </div>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border shrink-0 ${
+                        isAnniversary 
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : 'bg-purple-50 text-purple-800 border-purple-200'
+                      }`}>
+                        {isAnniversary ? (
+                          <>
+                            <Award className="w-3 h-3 text-amber-600" />
+                            {c.yearsCount}y Work Anniversary
+                          </>
+                        ) : (
+                          <>
+                            <Gift className="w-3 h-3 text-purple-600" />
+                            Birthday ({c.date.slice(5)})
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* TAB C: LEAVE & TIME-OFF */}
+      {/* ATTENDANCE */}
+      {activeTab === 'attendance' && (
+        <div className="space-y-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Shift & Check-in</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Shift: 09:00 - 18:00 · {currentTenant.headquarters}</p>
+            </div>
+
+            <button
+              onClick={handlePunchClock}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${
+                isClockedIn 
+                  ? 'bg-rose-600 text-white hover:bg-rose-700' 
+                  : isClockedOut
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+            >
+              {isClockedIn ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              <span>{isClockedIn ? 'Clock Out' : isClockedOut ? 'Clock In Again' : 'Clock In'}</span>
+            </button>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
+                <tr>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Clock In</th>
+                  <th className="py-2.5 px-3">Clock Out</th>
+                  <th className="py-2.5 px-3">Hours</th>
+                  <th className="py-2.5 px-3 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {myAttendance.map(att => (
+                  <tr key={att.id}>
+                    <td className="py-2.5 px-3 font-medium text-slate-900">{att.date}</td>
+                    <td className="py-2.5 px-3 font-mono text-emerald-700">{att.clockIn || att.clockInTime || '—'}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-700">{att.clockOut || att.clockOutTime || 'Active'}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-800">{att.totalWorkHours || att.totalHoursWorked || 8} hrs</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700">
+                        {att.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* LEAVE */}
       {activeTab === 'leave' && (
-        <div className="space-y-6">
-          {/* 4 Leave Wallets */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { type: 'Paid Vacation', available: currentEmpRecord.leaveBalance.paid, total: 20, color: 'blue' },
-              { type: 'Sick / Medical', available: currentEmpRecord.leaveBalance.sick, total: 10, color: 'emerald' },
-              { type: 'Casual Leave', available: currentEmpRecord.leaveBalance.casual, total: 8, color: 'amber' },
-              { type: 'Parental / Family', available: currentEmpRecord.leaveBalance.parental, total: 12, color: 'purple' },
+              { type: 'Paid Vacation', available: currentEmpRecord.leaveBalance.paid, total: 20 },
+              { type: 'Sick Leave', available: currentEmpRecord.leaveBalance.sick, total: 10 },
+              { type: 'Casual Leave', available: currentEmpRecord.leaveBalance.casual, total: 8 },
+              { type: 'Parental', available: currentEmpRecord.leaveBalance.parental, total: 12 },
             ].map(w => (
-              <div key={w.type} className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
-                <div className="text-xs font-bold text-slate-500 uppercase mb-1">{w.type}</div>
-                <div className="text-2xl font-extrabold text-slate-900">
-                  {w.available} <span className="text-xs font-normal text-slate-500">/ {w.total} days</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-100 rounded-full mt-3 overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600 rounded-full"
-                    style={{ width: `${(w.available / w.total) * 100}%` }}
-                  />
+              <div key={w.type} className="bg-white p-3.5 rounded-xl border border-slate-200">
+                <div className="text-xs text-slate-500">{w.type}</div>
+                <div className="text-xl font-bold text-slate-900 mt-1">
+                  {w.available} <span className="text-xs font-normal text-slate-400">/ {w.total}d</span>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Action Row */}
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">My Leave Applications</h2>
-              <p className="text-xs text-slate-500">Track pending and past time-off approvals</p>
-            </div>
+          <div className="flex justify-between items-center">
+            <h2 className="text-xs font-bold text-slate-900 uppercase">My Requests</h2>
             <button
               onClick={() => setShowLeaveModal(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs"
+              className="px-3 py-1.5 bg-slate-900 text-white rounded text-xs font-semibold hover:bg-slate-800"
             >
-              <Plus className="w-3.5 h-3.5" />
-              Apply Leave
+              + Apply Leave
             </button>
           </div>
 
-          {/* Full Table */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
                 <tr>
-                  <th className="py-3 px-4">Leave Category</th>
-                  <th className="py-3 px-4">Duration</th>
-                  <th className="py-3 px-4">Total Days</th>
-                  <th className="py-3 px-4">Reason / Comments</th>
-                  <th className="py-3 px-4 text-right">Status</th>
+                  <th className="py-2.5 px-3">Type</th>
+                  <th className="py-2.5 px-3">Dates</th>
+                  <th className="py-2.5 px-3">Days</th>
+                  <th className="py-2.5 px-3">Reason</th>
+                  <th className="py-2.5 px-3 text-right">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {myLeaves.map(l => (
-                  <tr key={l.id} className="hover:bg-slate-50">
-                    <td className="py-3 px-4 font-semibold text-slate-900 capitalize">{l.leaveType}</td>
-                    <td className="py-3 px-4 text-slate-600">{l.startDate} → {l.endDate}</td>
-                    <td className="py-3 px-4 font-mono font-bold text-slate-800">{l.days || l.daysCount || 1} days</td>
-                    <td className="py-3 px-4 text-slate-500">{l.reason}</td>
-                    <td className="py-3 px-4 text-right">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        l.status === 'approved' 
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                          : l.status === 'rejected' 
-                          ? 'bg-rose-50 text-rose-700 border border-rose-200' 
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  <tr key={l.id}>
+                    <td className="py-2.5 px-3 font-semibold text-slate-900">{l.leaveType}</td>
+                    <td className="py-2.5 px-3 text-slate-600">{l.startDate} to {l.endDate}</td>
+                    <td className="py-2.5 px-3 font-semibold text-slate-800">{l.days || l.daysCount || 1}d</td>
+                    <td className="py-2.5 px-3 text-slate-500">{l.reason}</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                        l.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
                       }`}>
                         {l.status}
                       </span>
@@ -764,137 +656,78 @@ export const MySpacePage: React.FC = () => {
         </div>
       )}
 
-      {/* TAB D: PAYSLIPS & COMPENSATION */}
+      {/* PAYSLIPS */}
       {activeTab === 'payslips' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Annual CTC Card */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Annual Compensation (CTC)</div>
-              <div className="text-3xl font-extrabold text-slate-900">
-                {currentTenant.currency || '$'}{currentEmpRecord.salary.toLocaleString()}
-              </div>
-              <div className="text-xs text-slate-500">
-                Monthly Gross: <strong>{currentTenant.currency || '$'}{Math.round(currentEmpRecord.salary / 12).toLocaleString()}</strong>
-              </div>
-            </div>
-
-            {/* Tax Bracket */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Estimated Withholding</div>
-              <div className="text-3xl font-extrabold text-slate-900">
-                22.0%
-              </div>
-              <div className="text-xs text-slate-500">
-                Statutory Federal & State Tax deductions applied
-              </div>
-            </div>
-
-            {/* Next Payout Date */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Upcoming Disbursal</div>
-              <div className="text-3xl font-extrabold text-blue-600">
-                28th of Month
-              </div>
-              <div className="text-xs text-slate-500">
-                Direct ACH Deposit via {currentTenant.name} Treasury
-              </div>
-            </div>
-          </div>
-
-          {/* Payslips List */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-            <h2 className="text-sm font-bold text-slate-900">Download Digital Payslip Vouchers</h2>
-
-            {myPayslips.length === 0 ? (
-              <div className="p-8 text-center border border-dashed border-slate-200 rounded-xl">
-                <Receipt className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-slate-700">No generated payslips for this period yet</p>
-                <p className="text-[11px] text-slate-500">Your payroll officer will publish monthly statements on the 28th.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
-                    <tr>
-                      <th className="py-3 px-4">Pay Period</th>
-                      <th className="py-3 px-4">Gross Salary</th>
-                      <th className="py-3 px-4">Deductions</th>
-                      <th className="py-3 px-4">Net Take-Home</th>
-                      <th className="py-3 px-4 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {myPayslips.map(slip => (
-                      <tr key={slip.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-bold text-slate-900">{slip.period}</td>
-                        <td className="py-3 px-4 font-mono text-slate-700">{currentTenant.currency || '$'}{(slip.grossPay || 0).toLocaleString()}</td>
-                        <td className="py-3 px-4 font-mono text-rose-600">-{(currentTenant.currency || '$')}{(slip.totalDeductions || 0).toLocaleString()}</td>
-                        <td className="py-3 px-4 font-mono font-bold text-emerald-700">{currentTenant.currency || '$'}{(slip.netPay || 0).toLocaleString()}</td>
-                        <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => {
-                              showToast('Downloading Payslip', `Generating official PDF voucher for ${slip.period}...`, 'info');
-                            }}
-                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-semibold text-xs inline-flex items-center gap-1.5"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            PDF Voucher
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
+                <tr>
+                  <th className="py-2.5 px-3">Period</th>
+                  <th className="py-2.5 px-3">Gross</th>
+                  <th className="py-2.5 px-3">Deductions</th>
+                  <th className="py-2.5 px-3">Net Pay</th>
+                  <th className="py-2.5 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {myPayslips.map(slip => (
+                  <tr key={slip.id}>
+                    <td className="py-2.5 px-3 font-semibold text-slate-900">{slip.period}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-700">{currentTenant.currency || '$'}{(slip.grossPay || 0).toLocaleString()}</td>
+                    <td className="py-2.5 px-3 font-mono text-rose-600">-{(currentTenant.currency || '$')}{(slip.totalDeductions || 0).toLocaleString()}</td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">{currentTenant.currency || '$'}{(slip.netPay || 0).toLocaleString()}</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <button
+                        onClick={() => showToast('Payslip Ready', `Viewing slip for ${slip.period}`, 'info')}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded font-semibold text-xs inline-flex items-center gap-1"
+                      >
+                        <Download className="w-3 h-3" />
+                        Slip
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* TAB E: EXPENSES */}
+      {/* EXPENSES */}
       {activeTab === 'expenses' && isModuleSubscribed('expenses') && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">My Expense Claims</h2>
-              <p className="text-xs text-slate-500">Submit and track corporate reimbursements</p>
-            </div>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xs font-bold text-slate-900 uppercase">My Claims</h2>
             <button
               onClick={() => setShowExpenseModal(true)}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs"
+              className="px-3 py-1.5 bg-slate-900 text-white rounded text-xs font-semibold hover:bg-slate-800"
             >
-              <Plus className="w-3.5 h-3.5" />
-              New Expense Claim
+              + Submit Claim
             </button>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
                 <tr>
-                  <th className="py-3 px-4">Merchant & Category</th>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Amount</th>
-                  <th className="py-3 px-4 text-right">Status</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Merchant</th>
+                  <th className="py-2.5 px-3">Category</th>
+                  <th className="py-2.5 px-3">Amount</th>
+                  <th className="py-2.5 px-3 text-right">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {myExpenses.map(exp => (
-                  <tr key={exp.id} className="hover:bg-slate-50">
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-slate-900">{exp.merchant}</div>
-                      <div className="text-[10px] text-slate-500 capitalize">{exp.category}</div>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">{exp.submittedAt || exp.transactionDate}</td>
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900">{exp.currency}{exp.amount.toLocaleString()}</td>
-                    <td className="py-3 px-4 text-right">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        exp.status === 'approved' || exp.status === 'disbursed'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                          : exp.status === 'rejected'
-                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  <tr key={exp.id}>
+                    <td className="py-2.5 px-3 text-slate-600">{exp.transactionDate}</td>
+                    <td className="py-2.5 px-3 font-semibold text-slate-900">{exp.merchant}</td>
+                    <td className="py-2.5 px-3 text-slate-500">{exp.category}</td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-slate-900">{exp.currency || '$'}{exp.amount.toFixed(2)}</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                        exp.status === 'approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
                       }`}>
                         {exp.status}
                       </span>
@@ -907,180 +740,152 @@ export const MySpacePage: React.FC = () => {
         </div>
       )}
 
-      {/* TAB F: ASSIGNED ASSETS */}
+      {/* ASSETS */}
       {activeTab === 'assets' && isModuleSubscribed('lifecycle') && (
-        <div className="space-y-6">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-4">
-            <h2 className="text-sm font-bold text-slate-900">Company Hardware Allocated to You</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {myAssets.length === 0 ? (
-                <div className="col-span-2 p-8 text-center border border-dashed border-slate-200 rounded-xl">
-                  <Laptop className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-xs font-semibold text-slate-700">No hardware assets registered under your profile</p>
-                </div>
-              ) : (
-                myAssets.map(ast => (
-                  <div key={ast.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center shrink-0">
-                      <Laptop className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold text-slate-900">{ast.name}</div>
-                      <div className="text-[11px] text-slate-500">Serial: <span className="font-mono text-slate-800">{ast.serialNumber}</span></div>
-                      <div className="text-[10px] text-emerald-700 font-semibold mt-1">Condition: {ast.condition} • Allocated: {ast.allocatedDate}</div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
+                <tr>
+                  <th className="py-2.5 px-3">Asset</th>
+                  <th className="py-2.5 px-3">Serial</th>
+                  <th className="py-2.5 px-3">Category</th>
+                  <th className="py-2.5 px-3 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {myAssets.map(asset => (
+                  <tr key={asset.id}>
+                    <td className="py-2.5 px-3 font-semibold text-slate-900">{asset.name}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-500">{asset.serialNumber}</td>
+                    <td className="py-2.5 px-3 text-slate-600">{asset.category}</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700">
+                        {asset.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* TAB G: AI POLICY COPILOT */}
+      {/* COPILOT */}
       {activeTab === 'copilot' && isModuleSubscribed('ai_hub') && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col h-[560px]">
-          <div className="p-4 bg-purple-50 border-b border-purple-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="text-xs font-bold text-slate-900">{currentTenant.name} Employee Handbook Copilot</h2>
-                <p className="text-[10px] text-purple-700">Instant answers regarding company policies & benefits</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 p-4 overflow-y-auto space-y-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+          <div className="h-64 overflow-y-auto space-y-3 p-2">
             {chatHistory.map((msg, i) => (
-              <div 
-                key={i} 
-                className={`flex gap-3 max-w-[85%] ${msg.role === 'user' ? 'ml-auto flex-row-reverse' : ''}`}
-              >
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                  msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-purple-100 text-purple-700'
-                }`}>
-                  {msg.role === 'user' ? currentUser.avatarInitials : 'AI'}
-                </div>
-                <div className={`p-3.5 rounded-2xl text-xs leading-relaxed ${
+              <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                <div className={`max-w-md px-3.5 py-2 rounded-lg text-xs ${
                   msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-800'
                 }`}>
                   {msg.text}
-                  <div className={`text-[9px] mt-1.5 opacity-70 ${msg.role === 'user' ? 'text-right' : ''}`}>{msg.time}</div>
                 </div>
+                <span className="text-[10px] text-slate-400 mt-1">{msg.time}</span>
               </div>
             ))}
           </div>
 
-          <form onSubmit={handleAskCopilot} className="p-3 border-t border-slate-200 bg-slate-50 flex items-center gap-2">
+          <form onSubmit={handleAskCopilot} className="flex gap-2">
             <input
               type="text"
+              placeholder="Ask a question..."
               value={copilotQuestion}
               onChange={e => setCopilotQuestion(e.target.value)}
-              placeholder="Ask about leave rules, expense limits, insurance, or WFH..."
-              className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-blue-500"
             />
-            <button
-              type="submit"
-              className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5"
-            >
-              <Send className="w-3.5 h-3.5" />
-              Ask
+            <button type="submit" className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold">
+              Send
             </button>
           </form>
         </div>
       )}
 
-      {/* LEAVE APPLICATION MODAL */}
+      {/* Leave Modal */}
       {showLeaveModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <CalendarOff className="w-4 h-4 text-blue-600" />
-                Submit Time-Off Application
-              </h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 space-y-4 animate-in fade-in">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-900">Request Leave</h3>
               <button onClick={() => setShowLeaveModal(false)} className="text-slate-400 hover:text-slate-700">
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleLeaveSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleLeaveSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Leave Category</label>
+                <label className="text-slate-600 block mb-1">Leave Type</label>
                 <select
                   value={leaveType}
                   onChange={e => setLeaveType(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  className="w-full p-2 border border-slate-200 rounded-md bg-white"
                 >
-                  <option value="Paid Leave">Paid Annual Vacation ({currentEmpRecord.leaveBalance.paid} days available)</option>
-                  <option value="Sick Leave">Sick / Medical Leave ({currentEmpRecord.leaveBalance.sick} days available)</option>
-                  <option value="Casual Leave">Casual Leave ({currentEmpRecord.leaveBalance.casual} days available)</option>
-                  <option value="Parental Leave">Parental Leave ({currentEmpRecord.leaveBalance.parental} days available)</option>
+                  <option value="Paid Leave">Paid Leave</option>
+                  <option value="Sick Leave">Sick Leave</option>
+                  <option value="Casual Leave">Casual Leave</option>
+                  <option value="Parental Leave">Parental Leave</option>
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Start Date</label>
+                  <label className="text-slate-600 block mb-1">Start Date</label>
                   <input
                     type="date"
                     value={leaveStartDate}
                     onChange={e => setLeaveStartDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                    required
+                    className="w-full p-2 border border-slate-200 rounded-md"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">End Date</label>
+                  <label className="text-slate-600 block mb-1">End Date</label>
                   <input
                     type="date"
                     value={leaveEndDate}
                     onChange={e => setLeaveEndDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                    required
+                    className="w-full p-2 border border-slate-200 rounded-md"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Total Days</label>
+                <label className="text-slate-600 block mb-1">Days</label>
                 <input
                   type="number"
                   min="0.5"
                   step="0.5"
                   value={leaveDays}
                   onChange={e => setLeaveDays(parseFloat(e.target.value) || 1)}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
-                  required
+                  className="w-full p-2 border border-slate-200 rounded-md"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Reason / Notes</label>
+                <label className="text-slate-600 block mb-1">Reason</label>
                 <textarea
+                  rows={2}
                   value={leaveReason}
                   onChange={e => setLeaveReason(e.target.value)}
-                  placeholder="E.g., Personal family commitment, medical checkup..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs h-20"
-                  required
+                  placeholder="Reason..."
+                  className="w-full p-2 border border-slate-200 rounded-md"
                 />
               </div>
 
-              <div className="pt-2 flex justify-end gap-2">
+              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowLeaveModal(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 font-semibold"
+                  className="flex-1 py-2 border border-slate-200 text-slate-700 rounded-md hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-xs"
+                  className="flex-1 py-2 bg-slate-900 text-white rounded-md font-semibold hover:bg-slate-800"
                 >
-                  Submit for Approval
+                  Submit
                 </button>
               </div>
             </form>
@@ -1088,87 +893,69 @@ export const MySpacePage: React.FC = () => {
         </div>
       )}
 
-      {/* EXPENSE APPLICATION MODAL */}
+      {/* Expense Modal */}
       {showExpenseModal && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-emerald-600" />
-                Submit Expense Claim
-              </h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 space-y-4 animate-in fade-in">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-900">Submit Expense</h3>
               <button onClick={() => setShowExpenseModal(false)} className="text-slate-400 hover:text-slate-700">
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleExpenseSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleExpenseSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Merchant / Spend Purpose</label>
+                <label className="text-slate-600 block mb-1">Category</label>
+                <select
+                  value={expenseCategory}
+                  onChange={e => setExpenseCategory(e.target.value as any)}
+                  className="w-full p-2 border border-slate-200 rounded-md bg-white"
+                >
+                  <option value="Client Meal">Client Meal</option>
+                  <option value="Travel / Flight">Travel / Flight</option>
+                  <option value="Hotel & Stay">Hotel & Stay</option>
+                  <option value="Software Subscription">Software Subscription</option>
+                  <option value="Office Supplies">Office Supplies</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-600 block mb-1">Merchant / Title</label>
                 <input
                   type="text"
+                  placeholder="e.g. Airline Ticket"
                   value={expenseMerchant}
                   onChange={e => setExpenseMerchant(e.target.value)}
-                  placeholder="E.g., Blue Bottle Coffee, AWS Training..."
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                  required
+                  className="w-full p-2 border border-slate-200 rounded-md"
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Category</label>
-                  <select
-                    value={expenseCategory}
-                    onChange={e => setExpenseCategory(e.target.value as any)}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                  >
-                    <option value="Client Meal">Client Meal</option>
-                    <option value="Travel">Travel & Transport</option>
-                    <option value="Software/Tools">Software & Tools</option>
-                    <option value="Home Office">Home Office</option>
-                    <option value="Wellness">Wellness</option>
-                    <option value="General">General</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Amount ({currentTenant.currency || '$'})</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={expenseAmount}
-                    onChange={e => setExpenseAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
-                    required
-                  />
-                </div>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Notes / Business Purpose</label>
-                <textarea
-                  value={expenseNotes}
-                  onChange={e => setExpenseNotes(e.target.value)}
-                  placeholder="Briefly describe the business need..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs h-16"
+                <label className="text-slate-600 block mb-1">Amount ($)</label>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  step="0.01"
+                  value={expenseAmount}
+                  onChange={e => setExpenseAmount(e.target.value)}
+                  className="w-full p-2 border border-slate-200 rounded-md"
                 />
               </div>
 
-              <div className="pt-2 flex justify-end gap-2">
+              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowExpenseModal(false)}
-                  className="px-4 py-2 border border-slate-200 rounded-lg text-slate-700 font-semibold"
+                  className="flex-1 py-2 border border-slate-200 text-slate-700 rounded-md hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-xs"
+                  className="flex-1 py-2 bg-slate-900 text-white rounded-md font-semibold hover:bg-slate-800"
                 >
-                  Submit Claim
+                  Submit
                 </button>
               </div>
             </form>

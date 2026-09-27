@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { ModuleGuard } from '../components/common/ModuleGuard';
 import { ExpenseClaim } from '../types/hrms';
@@ -118,6 +118,48 @@ const ExpensesContent: React.FC = () => {
   const [previewClaim, setPreviewClaim] = useState<ExpenseClaim | null>(null);
 
   const canApproveExpenses = hasPermission('approve_expenses');
+  const isFinanceOrAdmin = currentUser.role === 'Tenant Admin' || currentUser.role === 'Finance Officer' || currentUser.role === 'HR Manager';
+  const isDeptLead = currentUser.role === 'Department Lead';
+  const isStandardEmployee = currentUser.role === 'Employee';
+
+  const currentLoggedInEmp = employees.find(e => 
+    e.id === currentUser.id ||
+    e.email.toLowerCase() === currentUser.email.toLowerCase() ||
+    `${e.firstName} ${e.lastName}`.toLowerCase() === currentUser.name.toLowerCase()
+  );
+
+  const scopedExpenses: ExpenseClaim[] = useMemo(() => {
+    if (isFinanceOrAdmin) {
+      return expenses;
+    }
+    if (isDeptLead) {
+      return expenses.filter(c => 
+        c.department?.toLowerCase() === currentUser.department.toLowerCase() ||
+        c.employeeId === currentLoggedInEmp?.id ||
+        c.employeeId === currentUser.id ||
+        c.employeeName.toLowerCase().trim() === currentUser.name.toLowerCase().trim()
+      );
+    }
+    // Standard employee: strictly sees only own expense claims
+    return expenses.filter(c => 
+      c.employeeId === currentLoggedInEmp?.id ||
+      c.employeeId === currentUser.id ||
+      c.employeeName.toLowerCase().trim() === currentUser.name.toLowerCase().trim()
+    );
+  }, [expenses, isFinanceOrAdmin, isDeptLead, currentUser, currentLoggedInEmp]);
+
+  // Filtered List
+  const filteredExpenses: ExpenseClaim[] = useMemo(() => {
+    return scopedExpenses.filter(c => {
+      const matchesSearch = 
+        c.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.id.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === 'All' || c.category === selectedCategory;
+      const matchesStatus = selectedStatus === 'All' || c.status === selectedStatus;
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+  }, [scopedExpenses, searchQuery, selectedCategory, selectedStatus]);
 
   const handleExportExpensesCsv = () => {
     const data = filteredExpenses.map(c => ({
@@ -137,22 +179,11 @@ const ExpensesContent: React.FC = () => {
   };
 
   // Metrics Calculations
-  const totalClaimsSum = expenses.reduce((acc, c) => acc + c.amount, 0);
-  const pendingClaims = expenses.filter(c => c.status === 'pending');
+  const totalClaimsSum = scopedExpenses.reduce((acc, c) => acc + c.amount, 0);
+  const pendingClaims = scopedExpenses.filter(c => c.status === 'pending');
   const pendingSum = pendingClaims.reduce((acc, c) => acc + c.amount, 0);
-  const approvedClaims = expenses.filter(c => c.status === 'approved' || c.status === 'disbursed');
+  const approvedClaims = scopedExpenses.filter(c => c.status === 'approved' || c.status === 'disbursed');
   const approvedSum = approvedClaims.reduce((acc, c) => acc + c.amount, 0);
-
-  // Filtered List
-  const filteredExpenses = expenses.filter(c => {
-    const matchesSearch = 
-      c.employeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || c.category === selectedCategory;
-    const matchesStatus = selectedStatus === 'All' || c.status === selectedStatus;
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
 
   // Simulated AI OCR Autofill
   const handleAutoFillWithAi = (preset: SampleReceiptPreset) => {
@@ -196,6 +227,22 @@ const ExpensesContent: React.FC = () => {
         showToast('Receipt Analyzed', `Extracted data from ${file.name}`, 'success');
       }, 1200);
     }
+  };
+
+  const handleExportCsv = () => {
+    const data = filteredExpenses.map(exp => ({
+      'Claim ID': exp.id,
+      'Employee': exp.employeeName,
+      'Department': exp.department,
+      'Merchant': exp.merchant,
+      'Category': exp.category,
+      'Amount': exp.amount,
+      'Date': exp.transactionDate,
+      'Status': exp.status,
+      'Approved By': exp.approvedBy || 'Pending'
+    }));
+    exportToCsv(data, `Expenses_${currentTenant.slug}.csv`);
+    showToast('Export Complete', 'Expense claims exported to CSV.', 'success');
   };
 
   const handleSubmitClaim = (e: React.FormEvent) => {
@@ -272,32 +319,31 @@ const ExpensesContent: React.FC = () => {
   return (
     <div className="space-y-6 pb-12 max-w-full">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl shadow-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-emerald-600" />
-              Expenses & Claims Management
-            </h1>
-            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-              Module: expenses
-            </span>
-            <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-              {currentTenant.name}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500">
-            Submit receipts with AI OCR scanning, manage manager approvals, and queue reimbursements directly to payroll runs.
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 bg-white border border-slate-200 rounded-xl shadow-xs">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-emerald-600" />
+            Expenses & Claims
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Submit and review expense reimbursement claims for {currentTenant.name}.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            Export CSV
+          </button>
           <button
             onClick={() => setIsSubmitModalOpen(true)}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
           >
-            <Plus className="w-4 h-4" />
-            Submit Expense Claim
+            <Plus className="w-3.5 h-3.5" />
+            Submit Claim
           </button>
         </div>
       </div>
@@ -523,50 +569,77 @@ const ExpensesContent: React.FC = () => {
 
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
-                      {claim.status === 'pending' ? (
-                        canApproveExpenses ? (
-                          <div className="flex items-center justify-end gap-1.5">
+                      {(() => {
+                        const isSelfExpense = 
+                          claim.employeeId === currentUser.id ||
+                          (currentLoggedInEmp && claim.employeeId === currentLoggedInEmp.id) ||
+                          claim.employeeName?.toLowerCase().trim() === currentUser.name?.toLowerCase().trim();
+
+                        if (claim.status === 'pending') {
+                          if (!canApproveExpenses) {
+                            return (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-medium">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                Manager Review
+                              </span>
+                            );
+                          }
+
+                          if (isSelfExpense) {
+                            return (
+                              <span 
+                                className="inline-flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium"
+                                title="Segregation of Duties: You cannot approve your own expense claim."
+                              >
+                                <Lock className="w-3 h-3 text-amber-600" />
+                                Self-Claim (Prohibited)
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => approveExpenseClaim(claim.id)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
+                                title="Approve and push to payroll"
+                              >
+                                <Check className="w-3 h-3" />
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => rejectExpenseClaim(claim.id)}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                                title="Reject claim"
+                              >
+                                <X className="w-3 h-3" />
+                                Reject
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        if (claim.status === 'approved' && !claim.pushedToPayroll) {
+                          return canApproveExpenses ? (
                             <button
-                              onClick={() => approveExpenseClaim(claim.id)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-lg shadow-2xs transition-colors flex items-center gap-1 cursor-pointer"
-                              title="Approve and push to payroll"
+                              onClick={() => pushExpenseToPayroll(claim.id)}
+                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
                             >
-                              <Check className="w-3 h-3" />
-                              Approve
+                              Queue for Payroll
                             </button>
-                            <button
-                              onClick={() => rejectExpenseClaim(claim.id)}
-                              className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                              title="Reject claim"
-                            >
-                              <X className="w-3 h-3" />
-                              Reject
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
-                            <Clock className="w-3 h-3" />
-                            Manager Review
+                          ) : (
+                            <span className="text-[11px] text-emerald-700 font-semibold">
+                              Approved
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            {claim.approvedBy ? 'Authorized' : 'Settled'}
                           </span>
-                        )
-                      ) : claim.status === 'approved' && !claim.pushedToPayroll ? (
-                        canApproveExpenses ? (
-                          <button
-                            onClick={() => pushExpenseToPayroll(claim.id)}
-                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg transition-colors cursor-pointer"
-                          >
-                            Queue for Payroll
-                          </button>
-                        ) : (
-                          <span className="text-[11px] text-emerald-700 font-semibold">
-                            Approved
-                          </span>
-                        )
-                      ) : (
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          {claim.approvedBy ? 'Authorized' : 'Settled'}
-                        </span>
-                      )}
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))
@@ -670,17 +743,23 @@ const ExpensesContent: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Claimant Employee</label>
-                    <select
-                      value={formEmployeeId}
-                      onChange={e => setFormEmployeeId(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-                    >
-                      {employees.map(emp => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.firstName} {emp.lastName} ({emp.department})
-                        </option>
-                      ))}
-                    </select>
+                    {isStandardEmployee || !isFinanceOrAdmin ? (
+                      <div className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800">
+                        {currentLoggedInEmp ? `${currentLoggedInEmp.firstName} ${currentLoggedInEmp.lastName} (${currentLoggedInEmp.department})` : currentUser.name}
+                      </div>
+                    ) : (
+                      <select
+                        value={formEmployeeId}
+                        onChange={e => setFormEmployeeId(e.target.value)}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                      >
+                        {employees.map(emp => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.firstName} {emp.lastName} ({emp.department})
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div>

@@ -48,6 +48,56 @@ const CoreHrContent: React.FC = () => {
 
   const canManageEmployees = hasPermission('manage_employees');
   const canViewSalaries = hasPermission('view_compensation');
+  const isTenantAdminOrHr = currentUser.role === 'Tenant Admin' || currentUser.role === 'HR Manager';
+  const isDeptLead = currentUser.role === 'Department Lead';
+  const isStandardEmployee = currentUser.role === 'Employee';
+
+  const currentLoggedInEmp = useMemo(() => {
+    return employees.find(e => 
+      e.id === currentUser.id ||
+      e.email.toLowerCase() === currentUser.email.toLowerCase() ||
+      `${e.firstName} ${e.lastName}`.toLowerCase() === currentUser.name.toLowerCase()
+    );
+  }, [employees, currentUser]);
+
+  // Role-Based Directory Scoping:
+  // - Standard Employee: Strictly sees members of their own Department/Team and direct Reporting Manager.
+  // - Dept Lead: Sees members within their Department and their direct reports.
+  // - HR / Tenant Admin: Full organization-wide master directory.
+  const scopedEmployees = useMemo(() => {
+    if (isTenantAdminOrHr) {
+      return employees;
+    }
+    const userDept = (currentLoggedInEmp?.department || currentUser.department || '').toLowerCase().trim();
+    const userManager = (currentLoggedInEmp?.manager || '').toLowerCase().trim();
+    const userName = `${currentLoggedInEmp?.firstName || ''} ${currentLoggedInEmp?.lastName || ''}`.toLowerCase().trim() || currentUser.name.toLowerCase().trim();
+
+    if (isDeptLead) {
+      return employees.filter(emp => {
+        const empDept = (emp.department || '').toLowerCase().trim();
+        const isMyDept = empDept === userDept && userDept !== '';
+        const isMyReport = (emp.manager || '').toLowerCase().trim() === userName;
+        const isMe = emp.id === currentLoggedInEmp?.id || `${emp.firstName} ${emp.lastName}`.toLowerCase().trim() === userName;
+        const isMyManager = userManager !== '' && (
+          (emp.firstName + ' ' + emp.lastName).toLowerCase().trim() === userManager ||
+          emp.role.toLowerCase().includes(userManager)
+        );
+        return isMyDept || isMyReport || isMe || isMyManager;
+      });
+    }
+
+    // Standard Employee: strictly department colleagues + direct reporting manager + self
+    return employees.filter(emp => {
+      const empDept = (emp.department || '').toLowerCase().trim();
+      const isSameDept = empDept === userDept && userDept !== '';
+      const isMyManager = userManager !== '' && (
+        (emp.firstName + ' ' + emp.lastName).toLowerCase().trim() === userManager ||
+        emp.role.toLowerCase().includes(userManager)
+      );
+      const isMe = emp.id === currentLoggedInEmp?.id || `${emp.firstName} ${emp.lastName}`.toLowerCase().trim() === userName;
+      return isSameDept || isMyManager || isMe;
+    });
+  }, [employees, isTenantAdminOrHr, isDeptLead, currentLoggedInEmp, currentUser]);
 
   const isExecutiveOrCeo = (emp: Employee): boolean => {
     const role = (emp.role || '').toLowerCase();
@@ -77,22 +127,25 @@ const CoreHrContent: React.FC = () => {
   };
 
   const handleExportEmployeesCsv = () => {
-    const data = filteredEmployees.map(emp => ({
-      'Employee ID': emp.id,
-      'First Name': emp.firstName,
-      'Last Name': emp.lastName,
-      'Email': emp.email,
-      'Role': emp.role,
-      'Department': emp.department,
-      'Location': emp.location,
-      'Status': emp.status,
-      'Reporting Manager': emp.manager,
-      'Employment Type': emp.employmentType || 'Full-Time',
-      'Annual CTC ($)': canViewSalaries ? emp.salary : 'Confidential (RBAC Restricted)',
-      'Joining Date': emp.joinDate
-    }));
-    exportToCsv(data, `Employee_Directory_${currentTenant.slug}.csv`);
-    showToast('Export Complete', 'Workforce master directory exported to CSV.', 'success');
+    const data = filteredEmployees.map(emp => {
+      const isSelf = emp.id === currentLoggedInEmp?.id;
+      return {
+        'Employee ID': emp.id,
+        'First Name': emp.firstName,
+        'Last Name': emp.lastName,
+        'Email': emp.email,
+        'Role': emp.role,
+        'Department': emp.department,
+        'Location': emp.location,
+        'Status': isTenantAdminOrHr || isSelf ? emp.status : 'Active Team Member',
+        'Reporting Manager': emp.manager,
+        'Employment Type': emp.employmentType || 'Full-Time',
+        'Annual CTC ($)': canViewSalaries ? emp.salary : 'Confidential (HR Access Only)',
+        'Joining Date': emp.joinDate
+      };
+    });
+    exportToCsv(data, `Directory_${currentTenant.slug}.csv`);
+    showToast('Export Complete', 'Directory exported to CSV with role-appropriate redactions.', 'success');
   };
 
   // New Employee Form State
@@ -112,12 +165,12 @@ const CoreHrContent: React.FC = () => {
   });
 
   const departments = useMemo(() => {
-    const set = new Set(employees.map(e => e.department));
+    const set = new Set(scopedEmployees.map(e => e.department));
     return ['All', ...Array.from(set)];
-  }, [employees]);
+  }, [scopedEmployees]);
 
   const filteredEmployees = useMemo(() => {
-    return employees.filter(emp => {
+    return scopedEmployees.filter(emp => {
       const matchSearch = 
         `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
         emp.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -128,18 +181,18 @@ const CoreHrContent: React.FC = () => {
       const matchStatus = selectedStatus === 'All' || emp.status === selectedStatus;
       return matchSearch && matchDept && matchStatus;
     });
-  }, [employees, searchQuery, selectedDept, selectedStatus]);
+  }, [scopedEmployees, searchQuery, selectedDept, selectedStatus]);
 
   // Status stats summary
   const statusStats = useMemo(() => {
     return {
-      active: employees.filter(e => e.status === 'active').length,
-      probation: employees.filter(e => e.status === 'probation').length,
-      notice: employees.filter(e => e.status === 'notice').length,
-      on_leave: employees.filter(e => e.status === 'on_leave').length,
-      total: employees.length
+      active: scopedEmployees.filter(e => e.status === 'active').length,
+      probation: scopedEmployees.filter(e => e.status === 'probation').length,
+      notice: scopedEmployees.filter(e => e.status === 'notice').length,
+      on_leave: scopedEmployees.filter(e => e.status === 'on_leave').length,
+      total: scopedEmployees.length
     };
-  }, [employees]);
+  }, [scopedEmployees]);
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,16 +305,20 @@ const CoreHrContent: React.FC = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Core HR Employee Master
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+              {isStandardEmployee ? 'Team & Department Directory' : 'Employee Directory Master'}
             </h1>
-            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono">
-              {employees.length} Records
-            </span>
+            {isStandardEmployee && (
+              <span className="text-[10px] font-semibold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
+                Team Scoped ({currentLoggedInEmp?.department || currentUser.department})
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Workforce directory, profile cards, reporting hierarchy, and employee lifecycles for {currentTenant.name}.
+            {isStandardEmployee 
+              ? `Colleagues in ${currentLoggedInEmp?.department || currentUser.department} & direct reporting managers. Sensitive HR data is redacted.`
+              : `Workforce master directory and org hierarchy for ${currentTenant.name}.`}
           </p>
         </div>
 
@@ -276,7 +333,7 @@ const CoreHrContent: React.FC = () => {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Directory Master
+              {isStandardEmployee ? 'My Team' : 'Directory Master'}
             </button>
             <button
               onClick={() => setActiveTab('org_chart')}
@@ -286,7 +343,7 @@ const CoreHrContent: React.FC = () => {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Org Hierarchy
+              {isStandardEmployee ? 'Team Hierarchy' : 'Org Hierarchy'}
             </button>
           </div>
 
@@ -294,10 +351,10 @@ const CoreHrContent: React.FC = () => {
             <button
               onClick={handleExportEmployeesCsv}
               className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Download workforce directory CSV"
+              title="Download directory CSV"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              Export Directory CSV
+              Export CSV
             </button>
 
             {canManageEmployees ? (
@@ -309,9 +366,9 @@ const CoreHrContent: React.FC = () => {
                 Add Employee
               </button>
             ) : (
-              <span className="px-2.5 py-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-lg text-xs font-medium flex items-center gap-1.5" title="Requires HR Manager or Tenant Admin role">
+              <span className="px-2.5 py-1.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-lg text-xs font-medium flex items-center gap-1.5" title="Read-only access for department staff">
                 <Lock className="w-3.5 h-3.5 text-slate-400" />
-                Read-Only (ESS)
+                Colleague View
               </span>
             )}
           </div>
@@ -319,67 +376,81 @@ const CoreHrContent: React.FC = () => {
       </div>
 
       {/* Quick Status KPI Summary Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <button
-          onClick={() => setSelectedStatus(selectedStatus === 'active' ? 'All' : 'active')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            selectedStatus === 'active'
-              ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-500/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-          }`}
-        >
-          <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Active Staff</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-          </div>
-          <div className="text-xl font-bold font-mono text-emerald-700 mt-1">{statusStats.active}</div>
-        </button>
+      {isTenantAdminOrHr || isDeptLead ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <button
+            onClick={() => setSelectedStatus(selectedStatus === 'active' ? 'All' : 'active')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              selectedStatus === 'active'
+                ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-500/20 shadow-xs'
+                : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>Active Staff</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+            </div>
+            <div className="text-xl font-bold font-mono text-emerald-700 mt-1">{statusStats.active}</div>
+          </button>
 
-        <button
-          onClick={() => setSelectedStatus(selectedStatus === 'probation' ? 'All' : 'probation')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            selectedStatus === 'probation'
-              ? 'bg-amber-50/80 border-amber-300 ring-2 ring-amber-500/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-          }`}
-        >
-          <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Probation Period</span>
-            <span className="w-2 h-2 rounded-full bg-amber-600"></span>
-          </div>
-          <div className="text-xl font-bold font-mono text-amber-700 mt-1">{statusStats.probation}</div>
-        </button>
+          <button
+            onClick={() => setSelectedStatus(selectedStatus === 'probation' ? 'All' : 'probation')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              selectedStatus === 'probation'
+                ? 'bg-amber-50/80 border-amber-300 ring-2 ring-amber-500/20 shadow-xs'
+                : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>Probation Period</span>
+              <span className="w-2 h-2 rounded-full bg-amber-600"></span>
+            </div>
+            <div className="text-xl font-bold font-mono text-amber-700 mt-1">{statusStats.probation}</div>
+          </button>
 
-        <button
-          onClick={() => setSelectedStatus(selectedStatus === 'notice' ? 'All' : 'notice')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            selectedStatus === 'notice'
-              ? 'bg-rose-50/80 border-rose-300 ring-2 ring-rose-500/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-          }`}
-        >
-          <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Serving Notice</span>
-            <span className="w-2 h-2 rounded-full bg-rose-600"></span>
-          </div>
-          <div className="text-xl font-bold font-mono text-rose-700 mt-1">{statusStats.notice}</div>
-        </button>
+          <button
+            onClick={() => setSelectedStatus(selectedStatus === 'notice' ? 'All' : 'notice')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              selectedStatus === 'notice'
+                ? 'bg-rose-50/80 border-rose-300 ring-2 ring-rose-500/20 shadow-xs'
+                : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>Serving Notice</span>
+              <span className="w-2 h-2 rounded-full bg-rose-600"></span>
+            </div>
+            <div className="text-xl font-bold font-mono text-rose-700 mt-1">{statusStats.notice}</div>
+          </button>
 
-        <button
-          onClick={() => setSelectedStatus(selectedStatus === 'on_leave' ? 'All' : 'on_leave')}
-          className={`p-3 rounded-xl border text-left transition-all ${
-            selectedStatus === 'on_leave'
-              ? 'bg-blue-50/80 border-blue-300 ring-2 ring-blue-500/20 shadow-xs'
-              : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-          }`}
-        >
-          <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>On Leave</span>
-            <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+          <button
+            onClick={() => setSelectedStatus(selectedStatus === 'on_leave' ? 'All' : 'on_leave')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              selectedStatus === 'on_leave'
+                ? 'bg-blue-50/80 border-blue-300 ring-2 ring-blue-500/20 shadow-xs'
+                : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+            }`}
+          >
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>On Leave</span>
+              <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+            </div>
+            <div className="text-xl font-bold font-mono text-blue-700 mt-1">{statusStats.on_leave}</div>
+          </button>
+        </div>
+      ) : (
+        <div className="p-3.5 bg-blue-50/60 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-700 shrink-0" />
+            <span>
+              You are viewing <strong>{scopedEmployees.length} colleagues</strong> in <strong>{currentLoggedInEmp?.department || currentUser.department}</strong> and your reporting management line.
+            </span>
           </div>
-          <div className="text-xl font-bold font-mono text-blue-700 mt-1">{statusStats.on_leave}</div>
-        </button>
-      </div>
+          <span className="text-[11px] text-blue-700 font-semibold bg-white border border-blue-200 px-2 py-0.5 rounded shadow-2xs">
+            Privacy Enforced
+          </span>
+        </div>
+      )}
 
       {activeTab === 'directory' ? (
         <>
@@ -846,7 +917,13 @@ const CoreHrContent: React.FC = () => {
                 <span className="text-slate-500 text-[11px] flex items-center gap-1 font-medium">
                   <Phone className="w-3 h-3 text-slate-400" /> Phone Number
                 </span>
-                <span className="text-slate-900 font-mono block">{selectedEmployee.phone}</span>
+                {isTenantAdminOrHr || selectedEmployee.id === currentLoggedInEmp?.id ? (
+                  <span className="text-slate-900 font-mono block">{selectedEmployee.phone}</span>
+                ) : (
+                  <span className="text-slate-500 font-mono text-xs flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-slate-400" /> Business Email Only
+                  </span>
+                )}
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
@@ -867,11 +944,11 @@ const CoreHrContent: React.FC = () => {
                 <span className="text-slate-500 text-[11px] flex items-center gap-1 font-medium">
                   <DollarSign className="w-3 h-3 text-emerald-600" /> Annual Base Comp
                 </span>
-                {canViewSalaries ? (
+                {canViewSalaries || selectedEmployee.id === currentLoggedInEmp?.id ? (
                   <span className="text-emerald-800 font-mono font-bold block">${selectedEmployee.salary.toLocaleString()} / yr</span>
                 ) : (
                   <span className="text-slate-500 font-mono text-xs flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-slate-400" /> Confidential (RBAC Restricted)
+                    <Lock className="w-3 h-3 text-slate-400" /> Confidential (HR Access Only)
                   </span>
                 )}
               </div>
@@ -885,34 +962,44 @@ const CoreHrContent: React.FC = () => {
             </div>
 
             {/* Leave Balance Overview in Profile */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                  <Award className="w-3.5 h-3.5 text-blue-600" />
-                  Leave Entitlements & Remaining Balances
-                </span>
-                <span className="text-[10px] text-slate-500 font-mono">FY 2026</span>
-              </div>
+            {(isTenantAdminOrHr || isDeptLead || selectedEmployee.id === currentLoggedInEmp?.id) ? (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-blue-600" />
+                    Leave Entitlements & Remaining Balances
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">FY 2026</span>
+                </div>
 
-              <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                <div className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
-                  <div className="font-mono text-emerald-700 font-bold text-sm">{selectedEmployee.leaveBalance.paid}</div>
-                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">Paid Leave</div>
-                </div>
-                <div className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
-                  <div className="font-mono text-blue-700 font-bold text-sm">{selectedEmployee.leaveBalance.sick}</div>
-                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">Sick Leave</div>
-                </div>
-                <div className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
-                  <div className="font-mono text-amber-700 font-bold text-sm">{selectedEmployee.leaveBalance.casual}</div>
-                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">Casual Leave</div>
-                </div>
-                <div className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
-                  <div className="font-mono text-indigo-700 font-bold text-sm">{selectedEmployee.leaveBalance.parental || 12}w</div>
-                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">Parental</div>
+                <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
+                    <div className="font-mono text-emerald-700 font-bold text-sm">{selectedEmployee.leaveBalance.paid}</div>
+                    <div className="text-[10px] text-slate-500 font-medium mt-0.5">Paid Leave</div>
+                  </div>
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
+                    <div className="font-mono text-blue-700 font-bold text-sm">{selectedEmployee.leaveBalance.sick}</div>
+                    <div className="text-[10px] text-slate-500 font-medium mt-0.5">Sick Leave</div>
+                  </div>
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
+                    <div className="font-mono text-amber-700 font-bold text-sm">{selectedEmployee.leaveBalance.casual}</div>
+                    <div className="text-[10px] text-slate-500 font-medium mt-0.5">Casual Leave</div>
+                  </div>
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-2xs">
+                    <div className="font-mono text-indigo-700 font-bold text-sm">{selectedEmployee.leaveBalance.parental || 12}w</div>
+                    <div className="text-[10px] text-slate-500 font-medium mt-0.5">Parental</div>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  Colleague's personal leave balance is private.
+                </span>
+                <span className="text-[10px] text-slate-500 font-mono">Restricted</span>
+              </div>
+            )}
 
             {/* Quick Profile Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">

@@ -293,29 +293,29 @@ export const PayrollContent: React.FC = () => {
   return (
     <div className="space-y-6 pb-12 max-w-full">
       {/* 1. Cycle Summary Banner & Controls */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
           {/* Tenant & Cycle Title */}
-          <div className="flex items-start gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-xs shrink-0">
-              <Receipt className="w-6 h-6" />
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold shrink-0">
+              <Receipt className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-                  Payroll Engine & Statutory Compensation
+                <h1 className="text-base font-bold text-slate-900 tracking-tight">
+                  Payroll & Compensation
                 </h1>
-                <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded border ${
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
                   currentPeriodRun
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : 'bg-amber-50 text-amber-700 border-amber-200'
                 }`}>
-                  {currentPeriodRun ? '● SETTLED & DISBURSED' : '○ DRAFT · READY FOR SETTLEMENT'}
+                  {currentPeriodRun ? 'SETTLED' : 'DRAFT'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Automated gross-to-net engine, 50-20-20-10 salary structuring, statutory PF/TDS/PT withholdings, and ACH disbursals for <strong className="text-slate-800">{currentTenant.name}</strong>.
+                Gross-to-net salary disbursements for {currentTenant.name}.
               </p>
             </div>
           </div>
